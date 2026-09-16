@@ -67,8 +67,11 @@ ChatConversationViewer/
   sidechain toggle). There is no incremental update; a full document per conversation is fine
   for this read-only viewer.
 - Rendering is guarded on `AdapterCreated`: the initial `DataContextChanged` fires before the
-  native adapter exists, so it is skipped — `about:blank` plus the "Select a conversation"
-  overlay TextBlock covers the empty state.
+  native adapter exists, so renders before that are queued and flushed when the adapter is
+  ready. The webview is `IsVisible`-bound to `CurrentSession != null` — the native control
+  paints about:blank as a gray box on some platforms, which would sit behind the
+  "Select a conversation" overlay TextBlock (bound to `ObjectConverters.IsNull`). With the
+  webview hidden at startup its adapter may only be created once a session is selected.
 - `ConversationHtmlBuilder` fills the `Assets/detail.html` template. Placeholder order
   matters: `{{ENTRIES}}` is replaced **last**, because message text can legitimately contain
   `{{...}}` sequences that must not be interpreted as placeholders.

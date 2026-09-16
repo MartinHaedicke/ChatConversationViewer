@@ -84,7 +84,10 @@
       <!-- conversation detail is rendered as HTML in the platform webview
            (re-built via MainWindow code-behind whenever Entries/CurrentSession change) -->
       <Panel Grid.Row="1">
-        <NativeWebView x:Name="DetailWebView"/>
+        <!-- invisible until a session is selected: the native control paints about:blank
+             as a gray box on some platforms, which would sit behind the empty-state text -->
+        <NativeWebView x:Name="DetailWebView"
+                       IsVisible="{Binding CurrentSession, Converter={x:Static ObjectConverters.IsNotNull}}"/>
         <TextBlock Text="Select a conversation" FontSize="14" Opacity="0.6"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    IsVisible="{Binding CurrentSession, Converter={x:Static ObjectConverters.IsNull}}"/>

@@ -11,11 +11,23 @@ public partial class MainWindow : Window
 {
     private MainWindowViewModel? _viewModel;
     private bool _webViewReady;
+    private string? _pendingHtml;
 
     public MainWindow()
     {
         InitializeComponent();
-        DetailWebView.AdapterCreated += (_, _) => _webViewReady = true;
+        DetailWebView.AdapterCreated += (_, _) =>
+        {
+            _webViewReady = true;
+            // a render may have been requested before the adapter existed —
+            // the webview is invisible until a session is selected, so its
+            // adapter can be created lazily at that moment
+            if (_pendingHtml is { } html)
+            {
+                _pendingHtml = null;
+                DetailWebView.NavigateToString(html);
+            }
+        };
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -53,12 +65,19 @@ public partial class MainWindow : Window
 
     private void Render(IReadOnlyList<ConversationEntry> entries, string? title)
     {
-        // before the native adapter exists (initial DataContextChanged fires before the
-        // window is shown) nothing can be navigated; about:blank plus the empty-state
-        // overlay covers that initial state, so skip silently
-        if (!_webViewReady)
+        // nothing selected: the webview is hidden via the IsVisible binding and the
+        // overlay text covers the empty state — no document to build or navigate
+        if (title is null && entries.Count == 0)
+        {
+            _pendingHtml = null;
             return;
+        }
 
-        DetailWebView.NavigateToString(ConversationHtmlBuilder.ToHtml(entries, title));
+        var html = ConversationHtmlBuilder.ToHtml(entries, title);
+
+        if (_webViewReady)
+            DetailWebView.NavigateToString(html);
+        else
+            _pendingHtml = html;
     }
 }
