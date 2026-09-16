@@ -84,6 +84,15 @@ ChatConversationViewer/
 - `Assets/**` are plain `EmbeddedResource`, **not** AvaloniaResource, on purpose: they are
   plain HTML/JS/CSS strings, and `EmbeddedResource` keeps `ConversationHtmlBuilder` testable
   via `Add-Type` on the built DLL (Avalonia's `AssetLoader` needs a booted Avalonia app).
+- **Copy-as-Markdown:** a script in `detail.html` (tagged `// copy-as-markdown`) listens for
+  the page's `copy` event — the funnel for Ctrl+C, the context menu and host copy commands
+  — and replaces the clipboard with a markdown conversion of the DOM selection
+  (`window.ccvSelectionToMarkdown`, also usable via `InvokeScript` and in jsdom tests).
+  The walker is tuned to the exact markup the builder emits: entry headers become
+  `**Role** *(time)*`, code blocks fenced with the language (survives hljs's added
+  classes/spans — pre rendering uses `textContent`), `<br>` becomes a two-space hard break.
+  Selections inside one code block clone the ancestor chain in real browsers (spec) —
+  jsdom drops it, tests must emulate the fragment manually.
 - **Linux DMABUF workaround:** on systems without a usable GBM device (VMs, some drivers)
   WebKitGTK fails with "Failed to create GBM buffer" and the webview shows only a gray area.
   `Program.Main` re-execs the process once with `WEBKIT_DISABLE_DMABUF_RENDERER=1` — setting
