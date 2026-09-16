@@ -2,7 +2,7 @@
 
 ## Project
 
-**ChatConversationViewer** — cross-platform desktop app (C# / Avalonia 11, MVVM) that displays
+**ChatConversationViewer** — cross-platform desktop app (C# / Avalonia 12, MVVM) that displays
 AI assistant conversations from four different tools in one tree view:
 
 | Source | Storage | Reader |
@@ -24,11 +24,15 @@ dotnet run --project ChatConversationViewer    # run
 ```
 
 Solution file is `ChatConversationViewer.slnx` (XML format), project targets `net10.0`.
-Key packages: Avalonia 12.1.2, CommunityToolkit.Mvvm 8.4.2, Markdown.Avalonia.Tight +
-Markdown.Avalonia.SyntaxHigh 12.0.0-a3 (prerelease — no stable Markdown.Avalonia for
-Avalonia 12 exists yet; 11.0.3 crashes at startup against Avalonia 12), Microsoft.Data.Sqlite
-10.0.12. `Avalonia.Diagnostics` was dropped with the 12.x upgrade (package discontinued;
+Key packages: Avalonia 12.1.2, Avalonia.Controls.WebView 12.1.0 (official `NativeWebView`:
+WebView2 / WebKitGTK-WPE / WKWebView), CommunityToolkit.Mvvm 8.4.2, Markdig 1.3.2
+(markdown -> HTML for the detail view), Microsoft.Data.Sqlite 10.0.12.
+`Avalonia.Diagnostics` was dropped with the 12.x upgrade (package discontinued;
 F12 DevTools no longer built in).
+
+On Linux the app re-execs itself once at startup with `WEBKIT_DISABLE_DMABUF_RENDERER=1`
+set (see gotchas); `dotnet run` therefore returns immediately — the window belongs to the
+child process.
 
 ## Structure
 
@@ -40,42 +44,52 @@ ChatConversationViewer/
 │   ├── OpenCodeReader.cs         # OpenCode SQLite reader (session/message/part tables)
 │   ├── CopilotChatParser.cs      # VS Code chatSessions JSON parser (+ workspace.json folder mapping)
 │   ├── CopilotCliReader.cs       # Copilot CLI SQLite reader (sessions/turns tables)
+│   ├── ConversationHtmlBuilder.cs # entries -> standalone HTML doc for the webview detail view
 │   └── ConversationExporter.cs   # entries -> Markdown export
 ├── ViewModels/
 │   ├── TreeNodes.cs              # ProjectNode (multi-source), DirectoryNode (shared-parent grouping), SessionNode (loader delegate), ConversationSource
 │   └── MainWindowViewModel.cs    # scanning, merging per directory, selection, export command
-├── Controls/MarkdownTextBlock.cs # markdown renderer WITHOUT own scrollbar (see gotchas!)
+├── Assets/                        # embedded resources (NOT AvaloniaResource — see gotchas)
+│   ├── detail.html              # detail-view HTML template with {{TITLE}}/{{HLCSS}}/{{HLJS}}/{{ENTRIES}} placeholders
+│   ├── highlight.min.js          # highlight.js 11 (common languages), inlined per render
+│   └── github.min.css            # highlight.js light code theme, inlined per render
 ├── Converters/SourceBrushConverter.cs  # source -> mark color
-└── Views/MainWindow.axaml        # TreeView + detail view with DataTemplates per entry type
+└── Views/MainWindow.axaml        # TreeView + NativeWebView detail view (title/export stay Avalonia)
 ```
 
 ## Non-trivial aspects / gotchas
 
-### MarkdownTextBlock (Controls/MarkdownTextBlock.cs) — read before touching rendering
+### HTML detail view (NativeWebView + ConversationHtmlBuilder) — read before touching rendering
 
-- Uses `Markdown.Avalonia.Tight` **deliberately without** the `Markdown.Avalonia` meta package:
-  its HTML plugin swallows XML-ish tags (`<system-reminder>`, `<command-message>`, ...) which
-  chat transcripts are full of.
-- It uses the engine's `Transform()` directly instead of `MarkdownScrollViewer`, because a
-  ScrollViewer per message breaks virtualization and scrolling inside the message list.
-- **The engine drops lines starting with `<tag>`** (CommonMark HTML blocks, no HTML plugin to
-  render them). `Preprocess()` prefixes such lines with a zero-width space (U+200B).
-- **Soft breaks:** the engine collapses single newlines, chat text expects visible line breaks.
-  `Preprocess()` appends two trailing spaces to every line outside fenced code blocks.
-- **List marker bug (upstream, unfixed):** the engine emits U+25CB `○` (hollow circle) for `-`
-  bullets. `FixListMarkers()` post-processes the control tree and replaces it with `•`.
-- The control adds the `Markdown_Avalonia_MarkdownViewer` class to itself: the markdown theme
-  styles (included in App.axaml via `StyleCollections/MarkdownStyleFluentTheme.axaml`) are
-  scoped to that class — without it, list indentation/marker margins are missing.
-- **Syntax highlighting** (AvaloniaEdit-based) only works because the plugin is registered
-  manually: `engine.Plugins.Plugins.Add(new SyntaxHighlight())`. Language labels render
-  regardless; colors come from the plugin.
-- Because we bypass `MarkdownScrollViewer`, the SyntaxHigh **appendix styles** are also NOT
-  injected automatically (the plugin's `StyleEdit` targets the viewer's own style collection).
-  App.axaml therefore also includes
-  `avares://Markdown.Avalonia.SyntaxHigh/StyleCollections/AppendixOfFluentTheme.axaml` —
-  without it, code blocks show a textless dark rectangle top-right on hover (the copy button
-  gets its "Copy" label and the editor its monospace font only from that file).
+- The message list is a `NativeWebView` (official `Avalonia.Controls.WebView` package).
+  `MainWindow.axaml.cs` subscribes to the VM's `PropertyChanged` and re-renders the **whole
+  document** via `NavigateToString` whenever `Entries` changes (selection, load completion,
+  sidechain toggle). There is no incremental update; a full document per conversation is fine
+  for this read-only viewer.
+- Rendering is guarded on `AdapterCreated`: the initial `DataContextChanged` fires before the
+  native adapter exists, so it is skipped — `about:blank` plus the "Select a conversation"
+  overlay TextBlock covers the empty state.
+- `ConversationHtmlBuilder` fills the `Assets/detail.html` template. Placeholder order
+  matters: `{{ENTRIES}}` is replaced **last**, because message text can legitimately contain
+  `{{...}}` sequences that must not be interpreted as placeholders.
+- Markdown pipeline: Markdig with `UseSoftlineBreakAsHardlineBreak` (chat text expects
+  visible single-newline breaks) and `UseAdvancedExtensions` (tables etc.).
+- Raw XML-ish pseudo-tags in transcripts (`<system-reminder>`, `<command-message>`, ...)
+  pass through Markdig verbatim; the template CSS makes those unknown elements visible as
+  muted monospace blocks (browsers would otherwise inline their text into the paragraph).
+- Code highlighting runs client-side: `highlight.min.js` + `github.min.css` are **inlined**
+  into every document (NavigateToString has no base URL, so external resources don't load) and
+  `hljs.highlightAll()` runs on parse. Tool calls/results with language `text` render as
+  plain `<pre>` instead — skips hljs auto-detection on potentially huge non-code payloads.
+- `Assets/**` are plain `EmbeddedResource`, **not** AvaloniaResource, on purpose: they are
+  plain HTML/JS/CSS strings, and `EmbeddedResource` keeps `ConversationHtmlBuilder` testable
+  via `Add-Type` on the built DLL (Avalonia's `AssetLoader` needs a booted Avalonia app).
+- **Linux DMABUF workaround:** on systems without a usable GBM device (VMs, some drivers)
+  WebKitGTK fails with "Failed to create GBM buffer" and the webview shows only a gray area.
+  `Program.Main` re-execs the process once with `WEBKIT_DISABLE_DMABUF_RENDERER=1` — setting
+  it in-process is too late, WebKit's helper processes inherit the environment from process
+  start. Guard var: `CCV_WEBKIT_WORKAROUND`; an explicit export of the variable wins over
+  the workaround.
 
 ### Claude Code specifics
 
@@ -112,9 +126,12 @@ unrecoverable). Copilot CLI sessions without turns are skipped (they'd be empty)
 There is no test project. During development, UI changes were verified with a temporary
 `--screenshot` mode: `Avalonia.Headless` + `UseSkia()` + `UseHeadlessDrawing = false`, then
 `window.CaptureRenderedFrame()?.Save(path)`. Remove the package/mode afterwards again.
-Parser logic can also be exercised directly in PowerShell via `Add-Type` on the built DLL
-(except SQLite readers — native `e_sqlite3` doesn't resolve outside the app host; test those
-through the app).
+**This no longer covers the detail view**: headless uses `HeadlessWebViewAdapter`, a stub
+that renders nothing — verify webview content on a real display (run the app, or capture the
+window with ImageMagick `import -window <id>`; root-window capture fails under XWayland).
+Parser and `ConversationHtmlBuilder` logic can also be exercised directly via `Add-Type` /
+a scratch console project on the built DLL (except SQLite readers — native `e_sqlite3`
+doesn't resolve outside the app host; test those through the app).
 
 ## Conventions
 

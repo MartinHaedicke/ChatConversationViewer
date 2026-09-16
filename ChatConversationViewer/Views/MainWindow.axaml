@@ -1,8 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:ChatConversationViewer.ViewModels"
-        xmlns:models="using:ChatConversationViewer.Models"
-        xmlns:ctrl="using:ChatConversationViewer.Controls"
         xmlns:conv="using:ChatConversationViewer.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -83,121 +81,14 @@
                 VerticalAlignment="Top"/>
       </Grid>
 
-      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
-        <ItemsControl ItemsSource="{Binding Entries}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <VirtualizingStackPanel/>
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.DataTemplates>
-
-            <!-- User message -->
-            <DataTemplate DataType="models:UserTextEntry" x:DataType="models:UserTextEntry">
-              <Border Background="#224A7BD5" CornerRadius="6" Padding="10" Margin="0,4">
-                <StackPanel Spacing="4">
-                  <DockPanel>
-                    <TextBlock Text="User" FontWeight="SemiBold"/>
-                    <TextBlock DockPanel.Dock="Right" HorizontalAlignment="Right"
-                               Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss}'}"
-                               FontSize="11" Opacity="0.6"/>
-                    <TextBlock Text="subagent" FontSize="10" Opacity="0.6" Margin="8,0,0,0"
-                               IsVisible="{Binding IsSidechain}"/>
-                  </DockPanel>
-                  <ctrl:MarkdownTextBlock Markdown="{Binding Text}"/>
-                </StackPanel>
-              </Border>
-            </DataTemplate>
-
-            <!-- Assistant text -->
-            <DataTemplate DataType="models:AssistantTextEntry" x:DataType="models:AssistantTextEntry">
-              <Border Background="#14008080" CornerRadius="6" Padding="10" Margin="0,4">
-                <StackPanel Spacing="4">
-                  <DockPanel>
-                    <TextBlock Text="Assistant" FontWeight="SemiBold"/>
-                    <TextBlock DockPanel.Dock="Right" HorizontalAlignment="Right"
-                               Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss}'}"
-                               FontSize="11" Opacity="0.6"/>
-                    <TextBlock Text="subagent" FontSize="10" Opacity="0.6" Margin="8,0,0,0"
-                               IsVisible="{Binding IsSidechain}"/>
-                  </DockPanel>
-                  <ctrl:MarkdownTextBlock Markdown="{Binding Text}"/>
-                </StackPanel>
-              </Border>
-            </DataTemplate>
-
-            <!-- Thinking -->
-            <DataTemplate DataType="models:ThinkingEntry" x:DataType="models:ThinkingEntry">
-              <Border Background="#229B59B6" CornerRadius="6" Padding="10" Margin="0,4">
-                <Expander>
-                  <Expander.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <TextBlock Text="💭 Thinking" FontStyle="Italic" FontWeight="SemiBold"/>
-                      <TextBlock Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss}'}"
-                                 FontSize="11" Opacity="0.6" VerticalAlignment="Center"/>
-                      <TextBlock Text="subagent" FontSize="10" Opacity="0.6" VerticalAlignment="Center"
-                                 IsVisible="{Binding IsSidechain}"/>
-                    </StackPanel>
-                  </Expander.Header>
-                  <ctrl:MarkdownTextBlock Markdown="{Binding Thinking}" FontStyle="Italic" Opacity="0.9"/>
-                </Expander>
-              </Border>
-            </DataTemplate>
-
-            <!-- Tool call -->
-            <DataTemplate DataType="models:ToolUseEntry" x:DataType="models:ToolUseEntry">
-              <Border Background="#1F808080" CornerRadius="6" Padding="10" Margin="0,4">
-                <Expander IsExpanded="True">
-                  <Expander.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <TextBlock Text="{Binding Name, StringFormat='🔧 {0}'}" FontWeight="SemiBold"/>
-                      <TextBlock Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss}'}"
-                                 FontSize="11" Opacity="0.6" VerticalAlignment="Center"/>
-                      <TextBlock Text="subagent" FontSize="10" Opacity="0.6" VerticalAlignment="Center"
-                                 IsVisible="{Binding IsSidechain}"/>
-                    </StackPanel>
-                  </Expander.Header>
-                  <ctrl:MarkdownTextBlock Markdown="{Binding InputAsMarkdown}"/>
-                </Expander>
-              </Border>
-            </DataTemplate>
-
-            <!-- Tool result -->
-            <DataTemplate DataType="models:ToolResultEntry" x:DataType="models:ToolResultEntry">
-              <Border CornerRadius="6" Padding="10" Margin="0,4"
-                      Background="#14808080"
-                      Classes.error="{Binding IsError}">
-                <Border.Styles>
-                  <Style Selector="Border.error">
-                    <Setter Property="Background" Value="#40C04040"/>
-                  </Style>
-                </Border.Styles>
-                <Expander>
-                  <Expander.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <TextBlock Text="📄 Tool result" FontWeight="SemiBold"/>
-                      <TextBlock Text="⚠ error" Foreground="#FF8080" FontWeight="SemiBold"
-                                 VerticalAlignment="Center" IsVisible="{Binding IsError}"/>
-                      <TextBlock Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss}'}"
-                                 FontSize="11" Opacity="0.6" VerticalAlignment="Center"/>
-                      <TextBlock Text="subagent" FontSize="10" Opacity="0.6" VerticalAlignment="Center"
-                                 IsVisible="{Binding IsSidechain}"/>
-                    </StackPanel>
-                  </Expander.Header>
-                  <Panel>
-                    <ctrl:MarkdownTextBlock Markdown="{Binding ContentAsMarkdown}"
-                                            IsVisible="{Binding IsMarkup}"/>
-                    <SelectableTextBlock Text="{Binding Content}" TextWrapping="Wrap"
-                                         FontFamily="Consolas, Menlo, Monospace" FontSize="12"
-                                         IsVisible="{Binding !IsMarkup}"/>
-                  </Panel>
-                </Expander>
-              </Border>
-            </DataTemplate>
-
-          </ItemsControl.DataTemplates>
-        </ItemsControl>
-      </ScrollViewer>
+      <!-- conversation detail is rendered as HTML in the platform webview
+           (re-built via MainWindow code-behind whenever Entries/CurrentSession change) -->
+      <Panel Grid.Row="1">
+        <NativeWebView x:Name="DetailWebView"/>
+        <TextBlock Text="Select a conversation" FontSize="14" Opacity="0.6"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   IsVisible="{Binding CurrentSession, Converter={x:Static ObjectConverters.IsNull}}"/>
+      </Panel>
 
       <ProgressBar Grid.Row="2" IsIndeterminate="True" Height="3" Margin="0,6,0,0"
                    IsVisible="{Binding IsLoading}"/>
