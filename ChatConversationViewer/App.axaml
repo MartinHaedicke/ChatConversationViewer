@@ -1,0 +1,20 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ChatConversationViewer.App"
+             xmlns:local="using:ChatConversationViewer"
+             RequestedThemeVariant="Default">
+
+  <Application.DataTemplates>
+    <local:ViewLocator />
+  </Application.DataTemplates>
+
+  <Application.Styles>
+    <FluentTheme />
+    <!-- default styles for markdown rendered by MarkdownTextBlock (we bypass MarkdownScrollViewer,
+         which would normally inject these itself) -->
+    <StyleInclude Source="avares://Markdown.Avalonia/StyleCollections/MarkdownStyleFluentTheme.axaml" />
+    <!-- appendix styles from the SyntaxHigh plugin: code font, language label box,
+         and the "Copy" text for the hover copy button on code blocks -->
+    <StyleInclude Source="avares://Markdown.Avalonia.SyntaxHigh/StyleCollections/AppendixOfFluentTheme.axaml" />
+  </Application.Styles>
+</Application>
