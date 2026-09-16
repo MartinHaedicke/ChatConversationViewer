@@ -24,8 +24,11 @@ dotnet run --project ChatConversationViewer    # run
 ```
 
 Solution file is `ChatConversationViewer.slnx` (XML format), project targets `net10.0`.
-Key packages: Avalonia 11.3.22, CommunityToolkit.Mvvm 8.4.2, Markdown.Avalonia.Tight +
-Markdown.Avalonia.SyntaxHigh 11.0.3, Microsoft.Data.Sqlite 10.0.12.
+Key packages: Avalonia 12.1.2, CommunityToolkit.Mvvm 8.4.2, Markdown.Avalonia.Tight +
+Markdown.Avalonia.SyntaxHigh 12.0.0-a3 (prerelease — no stable Markdown.Avalonia for
+Avalonia 12 exists yet; 11.0.3 crashes at startup against Avalonia 12), Microsoft.Data.Sqlite
+10.0.12. `Avalonia.Diagnostics` was dropped with the 12.x upgrade (package discontinued;
+F12 DevTools no longer built in).
 
 ## Structure
 
