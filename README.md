@@ -5,8 +5,6 @@ A cross-platform desktop app that shows your AI assistant conversations from
 in one unified tree view — with a fully rendered detail view including markdown,
 thinking blocks, tool calls and tool results.
 
-![Screenshot](docs/screenshot.png)
-
 ## Features
 
 - **One tree for all tools** — conversations from all four sources are merged per working
@@ -34,7 +32,7 @@ front of a project name show which sources have conversations there.
 
 ## Getting started
 
-Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download).
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download).
 
 ```powershell
 dotnet build
@@ -54,7 +52,7 @@ The resulting app runs on Windows, macOS and Linux (Avalonia).
 
 ## Tech stack
 
-- [Avalonia 11](https://avaloniaui.net/) (MVVM, CommunityToolkit.Mvvm)
+- .NET 10 / [Avalonia 11](https://avaloniaui.net/) (MVVM, CommunityToolkit.Mvvm)
 - [Markdown.Avalonia](https://github.com/whistyun/Markdown.Avalonia) (Tight + SyntaxHigh)
 - Microsoft.Data.Sqlite
 - Plain `System.Text.Json` — no other dependencies

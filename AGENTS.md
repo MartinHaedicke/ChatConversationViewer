@@ -19,13 +19,13 @@ Markdown export.
 ## Build / Run
 
 ```powershell
-dotnet build                                   # bin\Debug\net8.0\
+dotnet build                                   # bin\Debug\net10.0\
 dotnet run --project ChatConversationViewer    # run
 ```
 
-Solution file is `ChatConversationViewer.slnx` (XML format), project targets `net8.0`.
-Key packages: Avalonia 11.3.2, CommunityToolkit.Mvvm 8.4.0, Markdown.Avalonia.Tight +
-Markdown.Avalonia.SyntaxHigh 11.0.3, Microsoft.Data.Sqlite 8.0.10.
+Solution file is `ChatConversationViewer.slnx` (XML format), project targets `net10.0`.
+Key packages: Avalonia 11.3.22, CommunityToolkit.Mvvm 8.4.2, Markdown.Avalonia.Tight +
+Markdown.Avalonia.SyntaxHigh 11.0.3, Microsoft.Data.Sqlite 10.0.12.
 
 ## Structure
 
