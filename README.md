@@ -64,4 +64,4 @@ Implementation details, parser internals and gotchas for contributors are docume
 
 ## License
 
-_TODO: choose a license and add a `LICENSE` file before publishing._
+[MIT](LICENSE) © 2026 Martin Hädicke
