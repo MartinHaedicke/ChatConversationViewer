@@ -39,9 +39,12 @@
                        ToolTip.Tip="Copilot (VS Code)" IsVisible="{Binding HasCopilotChat}"/>
               <Ellipse Width="9" Height="9" Fill="#24292F" VerticalAlignment="Center"
                        ToolTip.Tip="Copilot CLI" IsVisible="{Binding HasCopilotCli}"/>
-              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="3,0,0,0"
-                         ToolTip.Tip="{Binding SourceName}"/>
+              <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Margin="3,0,0,0"
+                         ToolTip.Tip="{Binding DirectoryPath}"/>
             </StackPanel>
+          </TreeDataTemplate>
+          <TreeDataTemplate DataType="vm:DirectoryNode" x:DataType="vm:DirectoryNode" ItemsSource="{Binding Children}">
+            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="3,0,0,0"/>
           </TreeDataTemplate>
           <TreeDataTemplate DataType="vm:SessionNode" x:DataType="vm:SessionNode">
             <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">

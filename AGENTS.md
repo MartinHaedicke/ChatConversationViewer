@@ -39,7 +39,7 @@ ChatConversationViewer/
 │   ├── CopilotCliReader.cs       # Copilot CLI SQLite reader (sessions/turns tables)
 │   └── ConversationExporter.cs   # entries -> Markdown export
 ├── ViewModels/
-│   ├── TreeNodes.cs              # ProjectNode (multi-source), SessionNode (loader delegate), ConversationSource
+│   ├── TreeNodes.cs              # ProjectNode (multi-source), DirectoryNode (shared-parent grouping), SessionNode (loader delegate), ConversationSource
 │   └── MainWindowViewModel.cs    # scanning, merging per directory, selection, export command
 ├── Controls/MarkdownTextBlock.cs # markdown renderer WITHOUT own scrollbar (see gotchas!)
 ├── Converters/SourceBrushConverter.cs  # source -> mark color

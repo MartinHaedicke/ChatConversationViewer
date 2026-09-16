@@ -22,11 +22,15 @@ public sealed class ProjectNode
     {
         DirectoryPath = directory;
         Name = directory;
+        DisplayName = directory;
         AddSource(source);
     }
 
     public string DirectoryPath { get; }
     public string Name { get; }
+
+    /// <summary>Tree label: full path at the top level, or the segment relative to its parent group.</summary>
+    public string DisplayName { get; set; }
     public bool HasClaude { get; private set; }
     public bool HasOpenCode { get; private set; }
     public bool HasCopilotChat { get; private set; }
@@ -139,6 +143,19 @@ public sealed class ProjectNode
             return null;
         }
     }
+
+    public override string ToString() => Name;
+}
+
+/// <summary>A common parent directory grouping several projects; shown as an intermediate tree level.</summary>
+public sealed class DirectoryNode
+{
+    public DirectoryNode(string name) => Name = name;
+
+    /// <summary>Group label: the common parent path with a trailing separator (e.g. "/home/martin/dev/").</summary>
+    public string Name { get; }
+
+    public ObservableCollection<object> Children { get; } = new();
 
     public override string ToString() => Name;
 }

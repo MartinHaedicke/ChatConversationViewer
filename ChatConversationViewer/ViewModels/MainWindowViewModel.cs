@@ -16,7 +16,7 @@ namespace ChatConversationViewer.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase
 {
     [ObservableProperty]
-    private ObservableCollection<ProjectNode> _projects = new();
+    private ObservableCollection<object> _projects = new();
 
     [ObservableProperty]
     private object? _selectedNode;
@@ -106,7 +106,7 @@ public partial class MainWindowViewModel : ViewModelBase
         CurrentSession = null;
         _allEntries = new List<ConversationEntry>();
         Entries = new ObservableCollection<ConversationEntry>();
-        Projects = new ObservableCollection<ProjectNode>();
+        Projects = new ObservableCollection<object>();
         LoadProjects();
     }
 
@@ -129,10 +129,9 @@ public partial class MainWindowViewModel : ViewModelBase
                 project.Sessions.Add(session);
         }
 
-        Projects = new ObservableCollection<ProjectNode>(
-            projectsByDir.Values.OrderBy(p => NormalizeDirectoryKey(p.Name), StringComparer.OrdinalIgnoreCase));
+        Projects = BuildProjectTree(projectsByDir.Values);
 
-        StatusText = $"{Projects.Count} projects, {Projects.Sum(p => p.Sessions.Count)} conversations"
+        StatusText = $"{projectsByDir.Count} projects, {projectsByDir.Values.Sum(p => p.Sessions.Count)} conversations"
             + string.Join("", new[] { openCodeError, copilotChatError, copilotCliError }
                 .Where(e => e is not null).Select(e => $" — {e}"));
     }
@@ -270,6 +269,109 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private static string NormalizeDirectoryKey(string path)
         => path.Replace('\\', '/').TrimEnd('/').ToLowerInvariant();
+
+    private sealed class PathTrieNode
+    {
+        public string Segment = "";
+        public string LabelPrefix = "";
+        public char Sep;
+        public ProjectNode? Project;
+        public Dictionary<string, PathTrieNode> Children { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Projects sharing a parent directory are grouped under a node for that parent
+    /// ("/home/martin/dev/" -> "project1", "project2", ...). Single-child chains are
+    /// collapsed, so a lone project keeps its full path as the label.
+    /// </summary>
+    private static ObservableCollection<object> BuildProjectTree(IEnumerable<ProjectNode> projects)
+    {
+        var root = new PathTrieNode();
+
+        foreach (var project in projects)
+        {
+            var path = project.DirectoryPath;
+            char sep;
+            string prefix;
+            string[] segments;
+
+            if (path.StartsWith('/'))
+            {
+                sep = '/';
+                prefix = "/";
+                segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            }
+            else if (path.Length >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/'))
+            {
+                sep = path[2];
+                prefix = "";
+                segments = path.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+            }
+            else
+            {
+                sep = Path.DirectorySeparatorChar;
+                prefix = "";
+                segments = path.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+            }
+
+            var current = root;
+            var labelPrefix = prefix;
+            foreach (var segment in segments)
+            {
+                if (!current.Children.TryGetValue(segment, out var child))
+                {
+                    child = new PathTrieNode { Segment = segment, LabelPrefix = labelPrefix, Sep = sep };
+                    current.Children.Add(segment, child);
+                }
+                labelPrefix += segment + sep;
+                current = child;
+            }
+
+            current.Project ??= project;
+        }
+
+        var result = new ObservableCollection<object>();
+        foreach (var top in root.Children.Values.OrderBy(c => c.Segment, StringComparer.OrdinalIgnoreCase))
+            result.Add(BuildTreeItem(top, top.LabelPrefix));
+        return result;
+    }
+
+    private static object BuildTreeItem(PathTrieNode node, string prefix)
+    {
+        if (node.Children.Count == 0)
+        {
+            var project = node.Project!;
+            project.DisplayName = prefix + node.Segment;
+            return project;
+        }
+
+        if (node.Children.Count == 1 && node.Project is null)
+            return BuildTreeItem(node.Children.Values.First(), prefix + node.Segment + node.Sep);
+
+        var group = new DirectoryNode(prefix + node.Segment + node.Sep);
+        if (node.Project is not null)
+        {
+            // the group directory is itself a project — show its conversations
+            // directly under the group instead of a redundant child project node
+            foreach (var session in node.Project.Sessions)
+                group.Children.Add(session);
+        }
+
+        var children = node.Children.Values
+            .Select(c => BuildTreeItem(c, ""))
+            .OrderBy(GetTreeItemLabel, StringComparer.OrdinalIgnoreCase);
+        foreach (var child in children)
+            group.Children.Add(child);
+
+        return group;
+    }
+
+    private static string GetTreeItemLabel(object item) => item switch
+    {
+        DirectoryNode directory => directory.Name,
+        ProjectNode project => project.DisplayName,
+        _ => "",
+    };
 
     async partial void OnSelectedNodeChanged(object? value)
     {
