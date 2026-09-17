@@ -67,3 +67,8 @@ $RECYCLE.BIN/
 
 # dotnet publish output
 publish/
+
+# WiX installer build output
+wix-installer/bin/
+# wix per-project extension cache
+.wix/

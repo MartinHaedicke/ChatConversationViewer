@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MSI definition for Chat Conversation Viewer (per-machine, x64).
+  Build via build.ps1 — it passes -d Version / -d PublishDir / -d Icon.
+  The UpgradeCode GUID is the product's permanent identity for upgrades: never change it.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="Chat Conversation Viewer"
+           Language="1033"
+           Manufacturer="ChatConversationViewer"
+           Version="$(Version)"
+           UpgradeCode="{8ACE2649-F037-400F-988F-5702382B3E8F}"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon.ico" SourceFile="$(Icon)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppMenuDir" Name="Chat Conversation Viewer" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Chat Conversation Viewer">
+        <Component Id="MainExecutable" Guid="*">
+          <File Id="ChatConversationViewerExe" Source="$(PublishDir)ChatConversationViewer.exe" KeyPath="yes" />
+          <Shortcut Id="StartMenuShortcut"
+                    Directory="AppMenuDir"
+                    Name="Chat Conversation Viewer"
+                    Icon="AppIcon.ico"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Advertise="yes" />
+        </Component>
+        <Component Id="DesktopShortcut" Guid="*">
+          <Shortcut Id="DesktopShortcutLink"
+                    Directory="DesktopFolder"
+                    Name="Chat Conversation Viewer"
+                    Icon="AppIcon.ico"
+                    Target="[INSTALLFOLDER]ChatConversationViewer.exe"
+                    WorkingDirectory="INSTALLFOLDER" />
+          <RegistryValue Root="HKLM" Key="Software\ChatConversationViewer" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Core" Title="Chat Conversation Viewer" Level="1" AllowAbsent="no">
+      <ComponentRef Id="MainExecutable" />
+    </Feature>
+    <Feature Id="DesktopShortcutFeature" Title="Desktop shortcut"
+             Description="Create a shortcut to Chat Conversation Viewer on the desktop" Level="1">
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+  </Package>
+</Wix>

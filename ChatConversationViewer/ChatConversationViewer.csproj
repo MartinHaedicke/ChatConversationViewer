@@ -9,6 +9,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <RootNamespace>ChatConversationViewer</RootNamespace>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>ChatConversationViewer</AssemblyName>
   </PropertyGroup>
 

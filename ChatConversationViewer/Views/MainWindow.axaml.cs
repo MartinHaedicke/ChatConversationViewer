@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.IO;
 using Avalonia.Controls;
+using Avalonia.Platform;
 using ChatConversationViewer.Models;
 using ChatConversationViewer.ViewModels;
 
@@ -16,6 +18,19 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // WebView2 defaults its user-data folder to a ".WebView2" folder next to
+        // the exe. That works for a portable/framed build, but under a per-machine
+        // install (Program Files) it is not writable and the adapter creation dies
+        // with UnauthorizedAccessException (0x80070005). Redirect it to a per-user
+        // location instead. Must be subscribed before attach (OnAttached creates
+        // the adapter and raises EnvironmentRequested from it).
+        DetailWebView.EnvironmentRequested += (_, args) =>
+        {
+            if (args is WindowsWebView2EnvironmentRequestedEventArgs w2 && w2.UserDataFolder is null)
+                w2.UserDataFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "ChatConversationViewer", "WebView2");
+        };
         DetailWebView.AdapterCreated += (_, _) =>
         {
             _webViewReady = true;
