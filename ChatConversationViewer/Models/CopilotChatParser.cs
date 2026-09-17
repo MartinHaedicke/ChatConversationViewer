@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 
 namespace ChatConversationViewer.Models;
@@ -70,37 +71,114 @@ public static class CopilotChatParser
                 entries.Add(new UserTextEntry(text.GetString()!, timestamp, IsSidechain: false));
             }
 
+            // v3 splits assistant markdown around inlineReference parts (symbol/file
+            // references) — merge the fragments, with the referenced names inlined,
+            // back into one AssistantTextEntry
+            var assistantText = new StringBuilder();
+
             foreach (var part in GetResponseParts(request))
             {
                 var kind = GetString(part, "kind");
                 switch (kind)
                 {
-                    case null when GetString(part, "value") is { Length: > 0 } markdown:
-                        entries.Add(new AssistantTextEntry(markdown, timestamp, IsSidechain: false));
+                    case null:
+                        if (GetString(part, "value") is { Length: > 0 } markdown)
+                            assistantText.Append(markdown);
                         break;
 
-                    case "thinking" when GetString(part, "value") is { Length: > 0 } thinking:
-                        entries.Add(new ThinkingEntry(thinking, timestamp, IsSidechain: false));
+                    case "inlineReference":
+                        assistantText.Append(InlineReferenceMarkdown(part));
+                        break;
+
+                    case "thinking":
+                        FlushAssistant(entries, assistantText, timestamp);
+                        if (GetString(part, "value") is { Length: > 0 } thinking)
+                            entries.Add(new ThinkingEntry(thinking, timestamp, IsSidechain: false));
                         break;
 
                     case "toolInvocationSerialized":
                     {
+                        FlushAssistant(entries, assistantText, timestamp);
                         var toolId = GetString(part, "toolId") ?? "tool";
                         var toolCallId = GetString(part, "toolCallId") ?? "";
+                        // invocationMessage is usually { value: "..." } but can also be
+                        // a plain string (observed in v3 sessions)
                         var invocation = part.TryGetProperty("invocationMessage", out var im)
-                            ? GetString(im, "value") ?? ""
+                            ? im.ValueKind == JsonValueKind.String
+                                ? im.GetString() ?? ""
+                                : GetString(im, "value") ?? ""
                             : "";
                         entries.Add(new ToolUseEntry(toolId, invocation, toolCallId, timestamp, IsSidechain: false, Language: "text"));
                         break;
                     }
 
-                    // prepareToolInvocation, mcpServersStarting and friends carry no content
+                    // prepareToolInvocation, mcpServersStarting, undoStop, textEditGroup
+                    // and friends interrupt the text — flush so it stays separate entries
+                    default:
+                        FlushAssistant(entries, assistantText, timestamp);
+                        break;
                 }
             }
+
+            FlushAssistant(entries, assistantText, timestamp);
         }
 
         return entries;
     }
+
+    private static void FlushAssistant(List<ConversationEntry> entries, StringBuilder text, DateTime? timestamp)
+    {
+        if (text.Length == 0)
+            return;
+        entries.Add(new AssistantTextEntry(text.ToString(), timestamp, IsSidechain: false));
+        text.Clear();
+    }
+
+    // VS Code embeds symbol/file references as inlineReference parts in the assistant
+    // markdown stream; inline code keeps the surrounding text readable. Symbol
+    // references carry a name, file/folder references are a bare URI object or
+    // { uri, range } — fall back to the file/folder name.
+    private static string InlineReferenceMarkdown(JsonElement part)
+    {
+        if (!part.TryGetProperty("inlineReference", out var reference)
+            || reference.ValueKind != JsonValueKind.Object)
+        {
+            return "";
+        }
+
+        var name = GetString(reference, "name") ?? ReferenceName(reference);
+        return name is { Length: > 0 }
+            ? "`" + name.Replace("`", "'") + "`"
+            : "";
+    }
+
+    private static string? ReferenceName(JsonElement reference)
+    {
+        // { uri, range } location form — uri is a URI object or a plain URI string
+        if (reference.TryGetProperty("uri", out var uri))
+        {
+            if (uri.ValueKind == JsonValueKind.Object)
+                return UriFileName(GetString(uri, "path"));
+            if (uri.ValueKind == JsonValueKind.String && uri.GetString() is { } uriString)
+            {
+                try
+                {
+                    return UriFileName(new Uri(uriString).LocalPath);
+                }
+                catch (UriFormatException)
+                {
+                    return null;
+                }
+            }
+            return null;
+        }
+
+        // bare URI object form: { path, scheme, ... }
+        return UriFileName(GetString(reference, "path"));
+    }
+
+    private static string? UriFileName(string? path)
+        => path is { Length: > 0 } ? Path.GetFileName(path.TrimEnd('/')) : null;
 
     private static IEnumerable<JsonElement> GetResponseParts(JsonElement request)
     {
@@ -190,11 +268,31 @@ public static class CopilotChatParser
     // leading slash before a Windows drive letter
     private static string? FromFileUri(string uri)
     {
-        var path = new Uri(uri).LocalPath;
-        if (path.Length >= 3 && path[0] == '/' && char.IsLetter(path[1]) && path[2] == ':')
-            path = path[1..];
-        return path;
+        try
+        {
+            return StripDriveSlash(new Uri(uri).LocalPath);
+        }
+        catch (UriFormatException)
+        {
+            // vscode-remote://wsl%2Bubuntu/home/... — .NET cannot parse the escaped
+            // authority (VS Code escapes the '+' in "wsl+ubuntu"); take the path
+            // portion of the URI directly instead
+            var authorityStart = uri.IndexOf("//", StringComparison.Ordinal);
+            if (authorityStart < 0)
+                return null;
+
+            var pathStart = uri.IndexOf('/', authorityStart + 2);
+            if (pathStart < 0)
+                return null;
+
+            return StripDriveSlash(Uri.UnescapeDataString(uri[pathStart..]));
+        }
     }
+
+    private static string StripDriveSlash(string path)
+        => path.Length >= 3 && path[0] == '/' && char.IsLetter(path[1]) && path[2] == ':'
+            ? path[1..]
+            : path;
 
     private static IEnumerable<string> StorageRoots()
     {
