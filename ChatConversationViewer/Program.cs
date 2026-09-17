@@ -45,6 +45,16 @@ internal static class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            // Windows 11 25H2 (build 26200) fails to create layered child windows
+            // (WS_EX_LAYERED), which WinUIComposition-mode windows use for the
+            // NativeControlHost holder — NativeWebView then dies on attach with
+            // "Unable to create child window for native control host". RedirectionSurface
+            // windows use a non-layered holder instead. No transparent/acrylic effects
+            // are needed here. No effect on Linux (Win32-only option).
+            .With(new Win32PlatformOptions
+            {
+                CompositionMode = new[] { Win32CompositionMode.RedirectionSurface }
+            })
             .WithInterFont()
             .LogToTrace();
 }
