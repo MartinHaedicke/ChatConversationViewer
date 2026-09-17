@@ -52,8 +52,10 @@ The resulting app runs on Windows, macOS and Linux (Avalonia).
 
 ## Tech stack
 
-- .NET 10 / [Avalonia 11](https://avaloniaui.net/) (MVVM, CommunityToolkit.Mvvm)
-- [Markdown.Avalonia](https://github.com/whistyun/Markdown.Avalonia) (Tight + SyntaxHigh)
+- .NET 10 / [Avalonia 12](https://avaloniaui.net/) (MVVM, CommunityToolkit.Mvvm)
+- Detail view: `NativeWebView` ([Avalonia.Controls.WebView](https://github.com/AvaloniaUI/Avalonia.WebView) — WebView2 / WebKitGTK / WKWebView)
+  rendering [Markdig](https://github.com/xoofx/markdig)-generated HTML with embedded
+  [highlight.js](https://highlightjs.org/) for code highlighting
 - Microsoft.Data.Sqlite
 - Plain `System.Text.Json` — no other dependencies
 
