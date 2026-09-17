@@ -1,0 +1,19 @@
+#!/bin/sh
+# AppRun for ChatConversationViewer AppImage.
+# Resolves the AppDir and launches the self-contained app binary.
+HERE="$(dirname "$(readlink -f "$0")")"
+
+# WebKitGTK 6.0 is a system dependency (NativeWebView P/Invokes it directly);
+# it cannot practically be bundled. Fail with a helpful message instead of
+# letting the app crash when the native control host attaches.
+if ! ldconfig -p 2>/dev/null | grep -q 'libwebkitgtk-6.0'; then
+    echo "ChatConversationViewer requires WebKitGTK 6.0, which is not installed." >&2
+    echo "" >&2
+    echo "Install it with your distribution's package manager, e.g.:" >&2
+    echo "  Debian/Ubuntu:  sudo apt install libwebkitgtk-6.0-4.1" >&2
+    echo "  Fedora:         sudo dnf install webkitgtk6.0" >&2
+    echo "  Arch:           sudo pacman -S webkitgtk-6.0" >&2
+    exit 1
+fi
+
+exec "$HERE/usr/bin/ChatConversationViewer" "$@"

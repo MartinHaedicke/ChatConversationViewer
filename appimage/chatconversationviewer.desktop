@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Chat Conversation Viewer
+Comment=Browse AI assistant conversations from Claude Code, OpenCode, GitHub Copilot and Copilot CLI
+Exec=ChatConversationViewer
+Icon=chatconversationviewer
+Terminal=false
+Categories=Utility;

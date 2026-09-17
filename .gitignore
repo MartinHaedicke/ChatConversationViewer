@@ -72,3 +72,7 @@ publish/
 wix-installer/bin/
 # wix per-project extension cache
 .wix/
+
+# AppImage build output / cached tooling
+appimage/dist/
+appimage/tools/
