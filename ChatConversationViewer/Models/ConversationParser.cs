@@ -8,9 +8,13 @@ namespace ChatConversationViewer.Models;
 
 /// <summary>
 /// Parses Claude Code conversation files (.jsonl in ~/.claude/projects/&lt;project&gt;/).
-/// Each line is a JSON object; we care about "user" and "assistant" entries whose
+/// Each record is a JSON object; we care about "user" and "assistant" entries whose
 /// message.content is either a string or an array of blocks
-/// (text / thinking / tool_use / tool_result).
+/// (text / thinking / tool_use / tool_result). Despite the ".jsonl" extension, records are not
+/// guaranteed to be one per physical line: some Claude Code versions/configurations write
+/// pretty-printed (multi-line) JSON objects back to back instead of compact single-line ones,
+/// so records are located by scanning for balanced top-level {..}/[..] instead (see
+/// <see cref="ReadJsonRecords"/>).
 /// </summary>
 public static class ConversationParser
 {
@@ -30,19 +34,16 @@ public static class ConversationParser
     {
         var entries = new List<ConversationEntry>();
 
-        foreach (var line in File.ReadLines(filePath))
+        foreach (var record in ReadJsonRecords(filePath))
         {
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-
             JsonDocument doc;
             try
             {
-                doc = JsonDocument.Parse(line);
+                doc = JsonDocument.Parse(record);
             }
             catch (JsonException)
             {
-                continue; // tolerate malformed lines
+                continue; // tolerate malformed records
             }
 
             using (doc)
@@ -134,28 +135,27 @@ public static class ConversationParser
     }
 
     /// <summary>Extracts a display title for a session: the ai-title entry, else the first user prompt.</summary>
-    public static string? ReadTitle(string filePath, int maxLines = 400)
+    public static string? ReadTitle(string filePath, int maxRecords = 400)
     {
         string? firstPrompt = null;
-        var lineCount = 0;
+        var recordCount = 0;
 
-        foreach (var line in File.ReadLines(filePath))
+        foreach (var record in ReadJsonRecords(filePath))
         {
-            if (++lineCount > maxLines)
+            if (++recordCount > maxRecords)
                 break;
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
 
-            // cheap string probes before paying for a full JSON parse
-            var isTitle = line.Contains("\"ai-title\"", StringComparison.Ordinal);
-            var isUser = !isTitle && firstPrompt is null && line.Contains("\"type\":\"user\"", StringComparison.Ordinal);
+            // cheap string probes before paying for a full JSON parse (records may be pretty-printed,
+            // so we can't assume compact "key":"value" spacing here)
+            var isTitle = record.Contains("ai-title", StringComparison.Ordinal);
+            var isUser = !isTitle && firstPrompt is null && record.Contains("\"user\"", StringComparison.Ordinal);
             if (!isTitle && !isUser)
                 continue;
 
             JsonDocument doc;
             try
             {
-                doc = JsonDocument.Parse(line);
+                doc = JsonDocument.Parse(record);
             }
             catch (JsonException)
             {
@@ -312,7 +312,62 @@ public static class ConversationParser
     private static string StripAnsi(string text) => AnsiPattern.Replace(text, "");
 
     private static string? GetString(JsonElement element, string property)
-        => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+        => element.ValueKind == JsonValueKind.Object
+           && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    /// <summary>
+    /// Splits a file into its top-level JSON record texts by scanning for balanced {..}/[..],
+    /// rather than assuming one record per physical line (see the class remarks: some Claude Code
+    /// versions write pretty-printed, multi-line JSON records to these files).
+    /// </summary>
+    private static IEnumerable<string> ReadJsonRecords(string filePath)
+    {
+        var text = File.ReadAllText(filePath);
+
+        var start = -1;
+        var depth = 0;
+        var inString = false;
+        var escape = false;
+
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+
+            if (start < 0)
+            {
+                if (c is '{' or '[')
+                {
+                    start = i;
+                    depth = 1;
+                    inString = false;
+                    escape = false;
+                }
+                continue; // whitespace or stray top-level scalars between records
+            }
+
+            if (inString)
+            {
+                if (escape) escape = false;
+                else if (c == '\\') escape = true;
+                else if (c == '"') inString = false;
+                continue;
+            }
+
+            switch (c)
+            {
+                case '"': inString = true; break;
+                case '{' or '[': depth++; break;
+                case '}' or ']':
+                    depth--;
+                    if (depth == 0)
+                    {
+                        yield return text[start..(i + 1)];
+                        start = -1;
+                    }
+                    break;
+            }
+        }
+    }
 }
