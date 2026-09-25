@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "ChatConversationViewer",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/ChatConversationViewer/bin/Debug/net10.0/ChatConversationViewer.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/ChatConversationViewer",
+            "stopAtEntry": false,
+            "console": "internalConsole",
+            "env": {
+                // Skip the DMABUF-workaround re-exec (see AGENTS.md): otherwise Main()
+                // spawns a child process and returns immediately, so the debugger detaches
+                // from what looks like an already-exited process instead of the real app.
+                "WEBKIT_DISABLE_DMABUF_RENDERER": "1"
+            }
+        }
+    ]
+}
