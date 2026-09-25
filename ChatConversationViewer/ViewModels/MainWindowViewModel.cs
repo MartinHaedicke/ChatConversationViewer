@@ -442,8 +442,28 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         var filtered = ShowSidechains
             ? _allEntries
-            : _allEntries.Where(e => !e.IsSidechain).ToList();
+            : RemoveSidechains(_allEntries);
 
         Entries = new ObservableCollection<ConversationEntry>(filtered);
+    }
+
+    /// <summary>
+    /// Drops sidechain entries, including recursively inside a ToolResultEntry's nested subagent
+    /// transcript (subagent transcripts are made up entirely of sidechain entries, so this hides
+    /// the whole nested section rather than leaving an empty "Subagent transcript" collapsible).
+    /// </summary>
+    private static List<ConversationEntry> RemoveSidechains(IReadOnlyList<ConversationEntry> entries)
+    {
+        var result = new List<ConversationEntry>();
+        foreach (var entry in entries)
+        {
+            if (entry.IsSidechain)
+                continue;
+
+            result.Add(entry is ToolResultEntry { NestedEntries.Count: > 0 } toolResult
+                ? toolResult with { NestedEntries = RemoveSidechains(toolResult.NestedEntries) }
+                : entry);
+        }
+        return result;
     }
 }
