@@ -71,6 +71,8 @@ public static class ConversationHtmlBuilder
                 var body = toolResult.Language is { } language
                     ? CodeBlock(toolResult.Content, language)
                     : PlainBlock(toolResult.Content);
+                if (toolResult.NestedEntries is { Count: > 0 } nested)
+                    body += RenderSubagentTranscript(nested);
                 return Collapsible("result" + (toolResult.IsError ? " error" : ""), "\U0001F4C4 Tool result",
                     time, extra, open: false, body);
             }
@@ -78,6 +80,15 @@ public static class ConversationHtmlBuilder
             default:
                 return "";
         }
+    }
+
+    private static string RenderSubagentTranscript(IReadOnlyList<ConversationEntry> nested)
+    {
+        var inner = new StringBuilder();
+        foreach (var entry in nested)
+            inner.Append(RenderEntry(entry));
+        return Collapsible("subagent-thread", $"\U0001F9F5 Subagent transcript ({nested.Count} entries)", "", "", open: false,
+            $"<div class=\"subagent-thread\">{inner}</div>");
     }
 
     private static string Bubble(string cssClass, string role, string time, string extra, string bodyHtml)

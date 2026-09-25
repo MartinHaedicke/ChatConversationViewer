@@ -14,7 +14,19 @@ namespace ChatConversationViewer.Models;
 /// </summary>
 public static class ConversationParser
 {
+    // "Agent" tool calls delegate to a subagent; Claude Code's own immediate tool_result is just
+    // a launch placeholder carrying this id, while the subagent's real transcript is written to
+    // a sibling subagents/agent-<id>.jsonl file (see ResolveSubagentsDir).
+    private static readonly System.Text.RegularExpressions.Regex AgentIdPattern =
+        new(@"agentId:\s*([A-Za-z0-9_-]+)", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // guards against pathological/cyclic agentId chains; real nesting is at most 1-2 deep
+    private const int MaxSubagentDepth = 5;
+
     public static List<ConversationEntry> Parse(string filePath)
+        => Parse(filePath, ResolveSubagentsDir(filePath), depth: 0);
+
+    private static List<ConversationEntry> Parse(string filePath, string? subagentsDir, int depth)
     {
         var entries = new List<ConversationEntry>();
 
@@ -107,7 +119,10 @@ public static class ConversationParser
                         {
                             var (resultText, isError) = ParseToolResult(block);
                             if (!string.IsNullOrWhiteSpace(resultText))
-                                entries.Add(new ToolResultEntry(resultText, isError, DetectLanguage(resultText), timestamp, isSidechain));
+                            {
+                                var nested = ResolveSubagentTranscript(resultText, subagentsDir, depth);
+                                entries.Add(new ToolResultEntry(resultText, isError, DetectLanguage(resultText), timestamp, isSidechain, nested));
+                            }
                             break;
                         }
                     }
@@ -180,6 +195,39 @@ public static class ConversationParser
         }
 
         return string.IsNullOrWhiteSpace(firstPrompt) ? null : firstPrompt;
+    }
+
+    /// <summary>The subagents/ directory Claude Code writes delegated agents' transcripts into, next to a session file.</summary>
+    private static string? ResolveSubagentsDir(string filePath)
+    {
+        var dir = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrEmpty(dir))
+            return null;
+        return Path.Combine(dir, Path.GetFileNameWithoutExtension(filePath), "subagents");
+    }
+
+    private static List<ConversationEntry>? ResolveSubagentTranscript(string resultText, string? subagentsDir, int depth)
+    {
+        if (subagentsDir is null || depth >= MaxSubagentDepth)
+            return null;
+
+        var match = AgentIdPattern.Match(resultText);
+        if (!match.Success)
+            return null;
+
+        var subFile = Path.Combine(subagentsDir, $"agent-{match.Groups[1].Value}.jsonl");
+        if (!File.Exists(subFile))
+            return null;
+
+        try
+        {
+            // sub-subagent ids are still resolved against the same top-level subagents/ folder
+            return Parse(subFile, subagentsDir, depth + 1);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
     }
 
     private static (string Text, bool IsError) ParseToolResult(JsonElement block)
