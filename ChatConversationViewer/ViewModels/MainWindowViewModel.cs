@@ -5,7 +5,9 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using ChatConversationViewer.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -26,6 +28,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CopyLocationCommand))]
     private SessionNode? _currentSession;
 
     [ObservableProperty]
@@ -81,6 +84,28 @@ public partial class MainWindowViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusText = $"Export failed: {ex.Message}";
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(HasSession))]
+    private async Task CopyLocationAsync()
+    {
+        if (CurrentSession is not { } session)
+            return;
+
+        var window = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+        var clipboard = window is null ? null : TopLevel.GetTopLevel(window)?.Clipboard;
+        if (clipboard is null)
+            return;
+
+        try
+        {
+            await clipboard.SetTextAsync(session.Location);
+            StatusText = "Location copied to clipboard";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Copy failed: {ex.Message}";
         }
     }
 

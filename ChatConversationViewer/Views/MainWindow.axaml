@@ -75,6 +75,9 @@
             </Border>
             <TextBlock Text="{Binding CurrentSession.Location}" FontSize="11" Opacity="0.6"
                        TextWrapping="Wrap" VerticalAlignment="Center"/>
+            <Button Content="Copy" FontSize="10" Padding="6,1" VerticalAlignment="Center"
+                    Command="{Binding CopyLocationCommand}"
+                    ToolTip.Tip="Copy location to clipboard"/>
           </StackPanel>
         </StackPanel>
         <Button Grid.Column="1" Content="Export Markdown…" Command="{Binding ExportCommand}"
