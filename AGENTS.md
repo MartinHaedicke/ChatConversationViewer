@@ -111,7 +111,8 @@ ChatConversationViewer/
   deleted directories.
 - Thinking blocks in transcripts usually contain only a signature (no text) — these show a
   "(not persisted)" placeholder.
-- `isSidechain` entries (Task subagent threads) are hidden by default, toggleable in the UI.
+- `isSidechain` entries (Task subagent threads, including a nested subagent transcript under an
+  `Agent` tool result) are shown by default, toggleable in the UI.
 
 ### Parsing/output hygiene
 

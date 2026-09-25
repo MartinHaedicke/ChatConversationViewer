@@ -36,7 +36,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _isLoading;
 
     [ObservableProperty]
-    private bool _showSidechains;
+    private bool _showSidechains = true;
 
     [ObservableProperty]
     private string _statusText = "";
