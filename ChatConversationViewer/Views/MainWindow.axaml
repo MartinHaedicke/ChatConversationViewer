@@ -81,7 +81,7 @@
           </StackPanel>
         </StackPanel>
         <Button Grid.Column="1" Content="Export Markdown…" Command="{Binding ExportCommand}"
-                VerticalAlignment="Top"/>
+                VerticalAlignment="Top" FontSize="10" Padding="6,1" />
       </Grid>
 
       <!-- conversation detail is rendered as HTML in the platform webview
