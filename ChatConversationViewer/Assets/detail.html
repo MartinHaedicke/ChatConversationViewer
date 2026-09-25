@@ -82,9 +82,44 @@ thinking, artifact-marker {
   font-family: Consolas, Menlo, monospace;
   font-size: 12px;
 }
+
+/* find-in-page (Ctrl+F) */
+#ccv-find-bar {
+  display: none;
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 9999;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 6px 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+}
+#ccv-find-bar.visible { display: flex; }
+#ccv-find-input { font-size: 12px; padding: 3px 6px; border: 1px solid #d0d7de; border-radius: 4px; width: 200px; }
+#ccv-find-count { min-width: 4.5em; opacity: .7; text-align: center; }
+#ccv-find-bar button {
+  font-size: 12px; padding: 3px 7px; border: 1px solid #d0d7de; border-radius: 4px;
+  background: #f6f8fa; cursor: pointer;
+}
+#ccv-find-bar button:hover { background: #eaeef2; }
+mark.ccv-find-hit { background: #ffe066; color: inherit; border-radius: 2px; }
+mark.ccv-find-hit.active { background: #ff9800; }
 </style>
 </head>
 <body>
+<div id="ccv-find-bar">
+  <input id="ccv-find-input" type="text" placeholder="Find in conversation" autocomplete="off"/>
+  <span id="ccv-find-count"></span>
+  <button id="ccv-find-prev" type="button" title="Previous match (Shift+Enter)">&#8593;</button>
+  <button id="ccv-find-next" type="button" title="Next match (Enter)">&#8595;</button>
+  <button id="ccv-find-close" type="button" title="Close (Esc)">&#10005;</button>
+</div>
 {{ENTRIES}}
 <script>
 {{HLJS}}
@@ -303,6 +338,165 @@ thinking, artifact-marker {
 
   // exposed for tests (jsdom) and potential host-side use via InvokeScript
   window.ccvSelectionToMarkdown = selectionToMarkdown;
+})();
+</script>
+<script>
+// find-in-page (Ctrl+F) — searches the full transcript, including text inside closed
+// <details> sections (collapsing them is CSS-only; the text is always in the DOM), and
+// opens whichever <details> a match is inside so it becomes visible.
+(function () {
+  'use strict';
+
+  var bar = document.getElementById('ccv-find-bar');
+  var input = document.getElementById('ccv-find-input');
+  var countLabel = document.getElementById('ccv-find-count');
+  var matches = [];
+  var currentIndex = -1;
+  var debounceHandle = null;
+
+  function isOpen() { return bar.classList.contains('visible'); }
+
+  function open() {
+    bar.classList.add('visible');
+    input.focus();
+    input.select();
+    if (input.value) runSearch();
+  }
+
+  function close() {
+    bar.classList.remove('visible');
+    clearHighlights();
+    updateCount();
+  }
+
+  function clearHighlights() {
+    var marks = document.querySelectorAll('mark.ccv-find-hit');
+    for (var i = 0; i < marks.length; i++) {
+      var mark = marks[i];
+      var parent = mark.parentNode;
+      if (!parent) continue;
+      parent.replaceChild(document.createTextNode(mark.textContent), mark);
+      parent.normalize();
+    }
+    matches = [];
+    currentIndex = -1;
+  }
+
+  function collectTextNodes() {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        var parent = node.parentElement;
+        if (!parent || parent.closest('#ccv-find-bar, script, style')) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    var nodes = [];
+    var n;
+    while ((n = walker.nextNode())) nodes.push(n);
+    return nodes;
+  }
+
+  // wraps every occurrence of `query` (case-insensitive) in its own text node with
+  // <mark class="ccv-find-hit">; matches never span more than one existing text node
+  function highlightMatches(query) {
+    var lowerQuery = query.toLowerCase();
+    var nodes = collectTextNodes();
+    var hits = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      var text = node.nodeValue;
+      var lowerText = text.toLowerCase();
+      var searchFrom = 0;
+      var offsets = [];
+      var at;
+      while ((at = lowerText.indexOf(lowerQuery, searchFrom)) !== -1) {
+        offsets.push(at);
+        searchFrom = at + lowerQuery.length;
+      }
+      if (offsets.length === 0) continue;
+
+      // rebuild this text node as a sequence of plain text + <mark> fragments
+      var frag = document.createDocumentFragment();
+      var cursor = 0;
+      for (var j = 0; j < offsets.length; j++) {
+        var start = offsets[j];
+        var end = start + query.length;
+        if (start > cursor) frag.appendChild(document.createTextNode(text.slice(cursor, start)));
+        var mark = document.createElement('mark');
+        mark.className = 'ccv-find-hit';
+        mark.textContent = text.slice(start, end);
+        frag.appendChild(mark);
+        hits.push(mark);
+        cursor = end;
+      }
+      if (cursor < text.length) frag.appendChild(document.createTextNode(text.slice(cursor)));
+      node.parentNode.replaceChild(frag, node);
+    }
+    return hits;
+  }
+
+  function updateCount() {
+    if (!input.value) { countLabel.textContent = ''; return; }
+    countLabel.textContent = matches.length === 0 ? 'No results' : (currentIndex + 1) + ' / ' + matches.length;
+  }
+
+  function goToMatch(index) {
+    if (matches.length === 0) return;
+    if (currentIndex >= 0 && matches[currentIndex]) matches[currentIndex].classList.remove('active');
+    currentIndex = (index + matches.length) % matches.length;
+    var mark = matches[currentIndex];
+    // reveal the match if it's inside a collapsed <details> section
+    var ancestor = mark.parentElement;
+    while (ancestor) {
+      if (ancestor.tagName === 'DETAILS' && !ancestor.open) ancestor.open = true;
+      ancestor = ancestor.parentElement;
+    }
+    mark.classList.add('active');
+    mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    updateCount();
+  }
+
+  function runSearch() {
+    clearHighlights();
+    var query = input.value;
+    if (query) matches = highlightMatches(query);
+    if (matches.length > 0) goToMatch(0);
+    else updateCount();
+  }
+
+  input.addEventListener('input', function () {
+    clearTimeout(debounceHandle);
+    debounceHandle = setTimeout(runSearch, 120);
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      goToMatch(currentIndex + (e.shiftKey ? -1 : 1));
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    }
+  });
+
+  document.getElementById('ccv-find-next').addEventListener('click', function () { goToMatch(currentIndex + 1); });
+  document.getElementById('ccv-find-prev').addEventListener('click', function () { goToMatch(currentIndex - 1); });
+  document.getElementById('ccv-find-close').addEventListener('click', close);
+
+  document.addEventListener('keydown', function (e) {
+    var isFindShortcut = (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'f' || e.key === 'F');
+    if (isFindShortcut) {
+      e.preventDefault();
+      open();
+    } else if (e.key === 'Escape' && isOpen()) {
+      close();
+    }
+  });
+
+  // exposed so the host can trigger find when Ctrl+F is pressed while focus is
+  // elsewhere in the app (e.g. the project tree), not inside this webview
+  window.ccvOpenFind = open;
 })();
 </script>
 </body>

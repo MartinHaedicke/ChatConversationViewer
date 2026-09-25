@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Platform;
 using ChatConversationViewer.Models;
 using ChatConversationViewer.ViewModels;
@@ -44,6 +46,23 @@ public partial class MainWindow : Window
             }
         };
         DataContextChanged += OnDataContextChanged;
+        AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+    }
+
+    // A plain KeyDown handler wouldn't fire while the native webview holds OS keyboard
+    // focus (its own in-page listener — see detail.html — handles Ctrl+F in that case);
+    // this tunnels from the Window down, catching Ctrl+F while focus is elsewhere in the
+    // app (e.g. the project tree) before routing it anywhere else.
+    private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.F || e.KeyModifiers != KeyModifiers.Control)
+            return;
+        if (_viewModel?.CurrentSession is null)
+            return;
+
+        e.Handled = true;
+        DetailWebView.Focus();
+        _ = DetailWebView.InvokeScript("window.ccvOpenFind && window.ccvOpenFind();");
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
