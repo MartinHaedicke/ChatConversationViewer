@@ -10,6 +10,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using ChatConversationViewer.Models;
+using ChatConversationViewer.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -60,6 +61,23 @@ public partial class MainWindowViewModel : ViewModelBase
         if (window is null)
             return;
 
+        // export exactly what is currently displayed (respects the sidechain filter), except that
+        // whether to also include a nested subagent transcript is its own choice, only asked when
+        // there is actually one present to include or drop
+        var entriesToExport = Entries.ToList();
+        if (entriesToExport.Any(e => e is ToolResultEntry { NestedEntries.Count: > 0 }))
+        {
+            var include = await ExportOptionsDialog.AskIncludeSubagentTranscriptsAsync(window);
+            if (!include)
+            {
+                entriesToExport = entriesToExport
+                    .Select(e => e is ToolResultEntry { NestedEntries.Count: > 0 } toolResult
+                        ? toolResult with { NestedEntries = null }
+                        : e)
+                    .ToList();
+            }
+        }
+
         var file = await window.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Export conversation as Markdown",
@@ -74,8 +92,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         try
         {
-            // export exactly what is currently displayed (respects the sidechain filter)
-            var markdown = ConversationExporter.ToMarkdown(Entries.ToList(), session.Title, session.SessionId, session.ProjectName);
+            var markdown = ConversationExporter.ToMarkdown(entriesToExport, session.Title, session.SessionId, session.ProjectName);
             await using var stream = await file.OpenWriteAsync();
             await using var writer = new StreamWriter(stream);
             await writer.WriteAsync(markdown);

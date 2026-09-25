@@ -1,0 +1,19 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="420"
+        x:Class="ChatConversationViewer.Views.ExportOptionsDialog"
+        Title="Export options"
+        Width="420" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+  <StackPanel Margin="20" Spacing="16">
+    <TextBlock TextWrapping="Wrap"
+               Text="This conversation includes subagent transcripts (from delegated Agent tool calls). Include them in the exported Markdown file?"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button x:Name="ExcludeButton" Content="Exclude" IsCancel="True"/>
+      <Button x:Name="IncludeButton" Content="Include" IsDefault="True"/>
+    </StackPanel>
+  </StackPanel>
+</Window>
