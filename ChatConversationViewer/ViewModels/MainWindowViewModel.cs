@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -30,6 +31,7 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopyLocationCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CopyTitleCommand))]
     private SessionNode? _currentSession;
 
     [ObservableProperty]
@@ -41,7 +43,20 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string _statusText = "";
 
+    [ObservableProperty]
+    private string _searchText = "";
+
+    [ObservableProperty]
+    private bool _matchCase;
+
+    [ObservableProperty]
+    private bool _wholeWord;
+
+    [ObservableProperty]
+    private ObservableCollection<SearchGroupNode> _searchGroups = new();
+
     private List<ConversationEntry> _allEntries = new();
+    private List<SessionNode> _allSessions = new();
 
     public MainWindowViewModel()
     {
@@ -128,6 +143,28 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private bool HasSession => CurrentSession is not null;
 
+    [RelayCommand(CanExecute = nameof(HasSession))]
+    private async Task CopyTitleAsync()
+    {
+        if (CurrentSession is not { } session)
+            return;
+
+        var window = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+        var clipboard = window is null ? null : TopLevel.GetTopLevel(window)?.Clipboard;
+        if (clipboard is null)
+            return;
+
+        try
+        {
+            await clipboard.SetTextAsync(session.Title);
+            StatusText = "Title copied to clipboard";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Copy failed: {ex.Message}";
+        }
+    }
+
     private static string SuggestFileName(SessionNode session)
     {
         var name = session.Title;
@@ -148,6 +185,7 @@ public partial class MainWindowViewModel : ViewModelBase
         CurrentSession = null;
         _allEntries = new List<ConversationEntry>();
         Entries = new ObservableCollection<ConversationEntry>();
+        SearchText = "";
         Projects = new ObservableCollection<object>();
         LoadProjects();
     }
@@ -172,6 +210,9 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         Projects = BuildProjectTree(projectsByDir.Values);
+
+        _allSessions = projectsByDir.Values.SelectMany(p => p.Sessions).ToList();
+        ApplySearch();
 
         StatusText = $"{projectsByDir.Count} projects, {projectsByDir.Values.Sum(p => p.Sessions.Count)} conversations"
             + string.Join("", new[] { openCodeError, copilotChatError, copilotCliError }
@@ -206,6 +247,7 @@ public partial class MainWindowViewModel : ViewModelBase
             foreach (var session in sessions)
             {
                 session.ProjectName = project.Name;
+                session.Project = project;
                 project.Sessions.Add(session);
             }
         }
@@ -227,6 +269,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 {
                     var node = SessionNode.ForOpenCode(session);
                     node.ProjectName = project.Name;
+                    node.Project = project;
                     project.Sessions.Add(node);
                 }
             }
@@ -252,6 +295,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 {
                     var node = SessionNode.ForCopilotChat(session);
                     node.ProjectName = project.Name;
+                    node.Project = project;
                     project.Sessions.Add(node);
                 }
             }
@@ -279,6 +323,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 {
                     var node = SessionNode.ForCopilotCli(session);
                     node.ProjectName = project.Name;
+                    node.Project = project;
                     project.Sessions.Add(node);
                 }
             }
@@ -454,6 +499,95 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     partial void OnShowSidechainsChanged(bool value) => ApplyFilter();
+
+    partial void OnSearchTextChanged(string value) => ApplySearch();
+
+    [RelayCommand]
+    private void ClearSearch() => SearchText = "";
+
+    partial void OnMatchCaseChanged(bool value) => ApplySearch();
+
+    partial void OnWholeWordChanged(bool value) => ApplySearch();
+
+    private void ApplySearch()
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+        {
+            SearchGroups = new ObservableCollection<SearchGroupNode>();
+            return;
+        }
+
+        var pattern = SearchText.Trim();
+        var wholeWord = new Regex(
+            $@"(?:\A|\W){Regex.Escape(pattern)}(?:\z|\W)",
+            MatchCase ? RegexOptions.CultureInvariant : RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
+        bool IsMatch(string text) =>
+            WholeWord ? wholeWord.IsMatch(text) : text.Contains(pattern, MatchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+
+        // group label = the project path relative to the shared ancestor, keeping the last
+        // shared segment ("dev/ImageSharp" instead of just "ImageSharp" or the full path)
+        var projectPaths = _allSessions
+            .Where(s => s.Project is not null)
+            .Select(s => s.Project!.DirectoryPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var common = CommonPathSegments(projectPaths);
+        var labelPrefixSegments = common.Length > 0 ? common[..^1] : common;
+
+        // grouped per project with the project's tree label; sessions newest first
+        var groups = _allSessions
+            .Where(s => s.Project is not null && (IsMatch(s.Title) || IsMatch(s.ProjectName)))
+            .GroupBy(s => s.Project!)
+            .Select(g =>
+            {
+                var group = new SearchGroupNode(RelativePathLabel(g.Key.DirectoryPath, labelPrefixSegments));
+                foreach (var session in g.OrderByDescending(s => s.LastWriteTime))
+                    group.Sessions.Add(session);
+                return group;
+            })
+            .OrderBy(g => g.Label, StringComparer.OrdinalIgnoreCase);
+
+        SearchGroups = new ObservableCollection<SearchGroupNode>(groups);
+    }
+
+    /// <summary>
+    /// Longest run of leading path segments (case-insensitive, both separators) shared by all
+    /// paths, but never consuming a full path — so the remainder is never empty.
+    /// </summary>
+    private static string[] CommonPathSegments(List<string> paths)
+    {
+        if (paths.Count == 0)
+            return [];
+
+        var segments = paths
+            .Select(p => p.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries))
+            .ToList();
+
+        var common = new List<string>();
+        for (var i = 0; ; i++)
+        {
+            if (segments.Any(s => s.Length <= i + 1))
+                break;
+
+            var segment = segments[0][i];
+            if (segments.Any(s => !string.Equals(s[i], segment, StringComparison.OrdinalIgnoreCase)))
+                break;
+
+            common.Add(segment);
+        }
+
+        return [.. common];
+    }
+
+    private static string RelativePathLabel(string path, string[] prefixSegments)
+    {
+        var segments = path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return string.Join('/', segments.Skip(prefixSegments.Length));
+    }
+
+    [RelayCommand]
+    private void OpenSession(SessionNode session) => SelectedNode = session;
 
     private void ApplyFilter()
     {

@@ -160,6 +160,17 @@ public sealed class DirectoryNode
     public override string ToString() => Name;
 }
 
+/// <summary>Search results for one project, headed by the project's tree label.</summary>
+public sealed class SearchGroupNode
+{
+    public SearchGroupNode(string label) => Label = label;
+
+    /// <summary>The project's label as it appears in the tree (full path or segment under its parent group).</summary>
+    public string Label { get; }
+
+    public List<SessionNode> Sessions { get; } = new();
+}
+
 /// <summary>A single conversation (Claude .jsonl session file or OpenCode session).</summary>
 public sealed class SessionNode
 {
@@ -225,6 +236,7 @@ public sealed class SessionNode
 
     /// <summary>File path (Claude) or database reference (OpenCode) — shown under the title.</summary>
     public string Location { get; }
+    public ProjectNode? Project { get; set; }
     public string ProjectName { get; set; } = "";
     public string SessionId { get; }
     public string Title { get; }

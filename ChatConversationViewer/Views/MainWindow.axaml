@@ -12,8 +12,26 @@
 
   <Grid ColumnDefinitions="380,5,*">
 
-    <!-- Left: tree of projects and conversations -->
+    <!-- Left: search, tree of projects and conversations -->
     <DockPanel Grid.Column="0" Margin="8">
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" Margin="4,0,0,0">
+          <ToggleButton IsChecked="{Binding MatchCase}" Content="Aa"
+                        ToolTip.Tip="Match case" Padding="5,2"/>
+          <ToggleButton IsChecked="{Binding WholeWord}" ToolTip.Tip="Match whole word" Padding="5,2">
+            <TextBlock Text="ab" TextDecorations="Underline"/>
+          </ToggleButton>
+        </StackPanel>
+        <TextBox Text="{Binding SearchText}" PlaceholderText="Search conversations…">
+          <TextBox.InnerRightContent>
+            <Button Content="✕" Command="{Binding ClearSearchCommand}"
+                    ToolTip.Tip="Clear search" Padding="3,1"
+                    Background="Transparent" BorderThickness="0"
+                    IsVisible="{Binding SearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+          </TextBox.InnerRightContent>
+        </TextBox>
+      </DockPanel>
+
       <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" Spacing="4">
         <TextBlock Text="{Binding StatusText}" FontSize="11" Opacity="0.6" TextWrapping="Wrap"/>
         <DockPanel>
@@ -24,8 +42,45 @@
         </DockPanel>
       </StackPanel>
 
-      <TreeView ItemsSource="{Binding Projects}"
-                SelectedItem="{Binding SelectedNode}">
+      <Grid>
+        <!-- while searching, the matches replace the tree, grouped per project (tree labels) -->
+        <ScrollViewer IsVisible="{Binding SearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <ItemsControl ItemsSource="{Binding SearchGroups}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:SearchGroupNode">
+                <StackPanel Margin="0,0,0,10">
+                  <TextBlock Text="{Binding Label}" FontWeight="SemiBold" FontSize="11" Opacity="0.7"
+                             TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"/>
+                  <ItemsControl ItemsSource="{Binding Sessions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:SessionNode">
+                        <Button Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).OpenSessionCommand}"
+                                CommandParameter="{Binding}"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="4,2,0,2" Background="Transparent" BorderThickness="0">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                                     Fill="{Binding Source, Converter={x:Static conv:SourceBrushConverter.Instance}}"
+                                     ToolTip.Tip="{Binding SourceName}"/>
+                            <StackPanel>
+                              <TextBlock Text="{Binding Title}" TextWrapping="Wrap" MaxWidth="300"
+                                         ToolTip.Tip="{Binding SessionId}"/>
+                              <TextBlock Text="{Binding Subtitle}" FontSize="11" Opacity="0.6"/>
+                            </StackPanel>
+                          </StackPanel>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+
+        <TreeView ItemsSource="{Binding Projects}"
+                  SelectedItem="{Binding SelectedNode}"
+                  IsVisible="{Binding SearchText, Converter={x:Static StringConverters.IsNullOrEmpty}}">
         <TreeView.DataTemplates>
           <TreeDataTemplate DataType="vm:ProjectNode" x:DataType="vm:ProjectNode" ItemsSource="{Binding Sessions}">
             <StackPanel Orientation="Horizontal" Spacing="3">
@@ -57,7 +112,8 @@
             </StackPanel>
           </TreeDataTemplate>
         </TreeView.DataTemplates>
-      </TreeView>
+        </TreeView>
+      </Grid>
     </DockPanel>
 
     <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="#22000088"/>
@@ -66,8 +122,19 @@
     <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto" Margin="8">
       <Grid Grid.Row="0" Margin="0,0,0,8" ColumnDefinitions="*,Auto">
         <StackPanel Spacing="2">
-          <TextBlock Text="{Binding CurrentSession.Title, FallbackValue='Select a conversation'}"
-                     FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"/>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="{Binding CurrentSession.Title, FallbackValue='Select a conversation'}"
+                       FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <Button FontSize="10" Padding="6,2" VerticalAlignment="Top"
+                    Command="{Binding CopyTitleCommand}"
+                    IsVisible="{Binding CurrentSession, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    ToolTip.Tip="Copy title to clipboard">
+              <Path Width="11" Height="15" Stretch="Uniform"
+                    Data="M14 2 H5 V17 M8 7 H17 V22 H8 Z"
+                    Stroke="{Binding $parent[Button].Foreground}"
+                    StrokeThickness="0.7"/>
+            </Button>
+          </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding !!CurrentSession}">
             <Border CornerRadius="3" Padding="5,1"
                     Background="{Binding CurrentSession.Source, Converter={x:Static conv:SourceBrushConverter.Instance}}">
@@ -75,9 +142,14 @@
             </Border>
             <TextBlock Text="{Binding CurrentSession.Location}" FontSize="11" Opacity="0.6"
                        TextWrapping="Wrap" VerticalAlignment="Center"/>
-            <Button Content="Copy" FontSize="10" Padding="6,1" VerticalAlignment="Center"
+            <Button FontSize="10" Padding="6,2" VerticalAlignment="Center"
                     Command="{Binding CopyLocationCommand}"
-                    ToolTip.Tip="Copy location to clipboard"/>
+                    ToolTip.Tip="Copy location to clipboard">
+              <Path Width="11" Height="15" Stretch="Uniform"
+                    Data="M14 2 H5 V17 M8 7 H17 V22 H8 Z"
+                    Stroke="{Binding $parent[Button].Foreground}"
+                    StrokeThickness="0.7"/>
+            </Button>
           </StackPanel>
         </StackPanel>
         <Button Grid.Column="1" Content="Export Markdown…" Command="{Binding ExportCommand}"
