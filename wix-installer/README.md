@@ -21,13 +21,14 @@ single-file win-x64 publish output.
 
 ```powershell
 dotnet tool install --global wix                    # WiX Toolset v7 CLI
+wix eula accept wix7                                # OSMF EULA (needed for wix extension add)
 wix extension add -g WixToolset.UI.wixext          # WixUI dialog library
 ```
 
-WiX v7 requires accepting its OSMF EULA. `build.ps1` passes `-acceptEula wix7`
-on every run, so no extra step is needed. (The Open Source Maintenance Fee
-itself only applies to organizations with more than $10,000 annual revenue;
-see https://wixtoolset.org/osmf/.)
+`build.ps1` passes `-acceptEula wix7` to `wix build`, but `wix extension add`
+has no such flag — accept the EULA once via `wix eula accept wix7`. (The
+Open Source Maintenance Fee itself only applies to organizations with more
+than $10,000 annual revenue; see https://wixtoolset.org/osmf/.)
 
 The steps above are identical on Linux, **but WiX cannot build MSIs on
 Linux**: since WiX v4 it validates `Directory/@Name` values with a hardcoded

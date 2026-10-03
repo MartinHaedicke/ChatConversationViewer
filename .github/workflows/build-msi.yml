@@ -20,6 +20,7 @@ jobs:
       - name: Install WiX
         run: |
           dotnet tool install --global wix
+          wix eula accept wix7
           wix extension add -g WixToolset.UI.wixext
 
       - name: Build MSI
