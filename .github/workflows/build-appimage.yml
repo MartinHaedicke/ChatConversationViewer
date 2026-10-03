@@ -1,0 +1,27 @@
+name: Build AppImage
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build AppImage
+        run: appimage/build.sh
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ChatConversationViewer-appimage
+          path: appimage/dist/*.AppImage
