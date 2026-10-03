@@ -13,8 +13,9 @@ AI assistant conversations from four different tools in one tree view:
 | Copilot CLI | `~/.copilot/session-store.db` (SQLite) | `CopilotCliReader` |
 
 Features: tree of projects/conversations with per-source color marks (merged per working
-directory), detail view with markdown rendering, thinking blocks, tool calls/results, and
-Markdown export.
+directory), title search over all conversations, detail view with markdown rendering,
+thinking blocks, tool calls/results, find-in-page (Ctrl+F), copy title/location buttons,
+and Markdown export.
 
 ## Build / Run
 
@@ -47,14 +48,17 @@ ChatConversationViewer/
 │   ├── ConversationHtmlBuilder.cs # entries -> standalone HTML doc for the webview detail view
 │   └── ConversationExporter.cs   # entries -> Markdown export
 ├── ViewModels/
-│   ├── TreeNodes.cs              # ProjectNode (multi-source), DirectoryNode (shared-parent grouping), SessionNode (loader delegate), ConversationSource
-│   └── MainWindowViewModel.cs    # scanning, merging per directory, selection, export command
+│   ├── TreeNodes.cs              # ProjectNode (multi-source), DirectoryNode (shared-parent grouping), SearchGroupNode, SessionNode (loader delegate), ConversationSource
+│   └── MainWindowViewModel.cs    # scanning, merging per directory, selection, title search, export command
 ├── Assets/                        # embedded resources (NOT AvaloniaResource — see gotchas)
-│   ├── detail.html              # detail-view HTML template with {{TITLE}}/{{HLCSS}}/{{HLJS}}/{{ENTRIES}} placeholders
+│   ├── detail.html              # detail-view HTML template with {{TITLE}}/{{HLCSS}}/{{HLJS}}/{{ENTRIES}} placeholders + find-in-page bar
 │   ├── highlight.min.js          # highlight.js 11 (common languages), inlined per render
 │   └── github.min.css            # highlight.js light code theme, inlined per render
 ├── Converters/SourceBrushConverter.cs  # source -> mark color
-└── Views/MainWindow.axaml        # TreeView + NativeWebView detail view (title/export stay Avalonia)
+├── Views/
+│   ├── MainWindow.axaml          # search box + tree + NativeWebView detail view (title/export stay Avalonia)
+│   └── ExportOptionsDialog.axaml(.cs) # asks whether to include subagent transcripts when exporting
+└── ...
 ```
 
 ## Non-trivial aspects / gotchas
@@ -96,6 +100,15 @@ ChatConversationViewer/
   classes/spans — pre rendering uses `textContent`), `<br>` becomes a two-space hard break.
   Selections inside one code block clone the ancestor chain in real browsers (spec) —
   jsdom drops it, tests must emulate the fragment manually.
+- **Find-in-page (Ctrl+F):** the find bar also lives in `detail.html` (`window.ccvOpenFind`).
+  It wraps every hit in `<mark class="ccv-find-hit">` (active hit orange), has match-case
+  ("Aa") and whole-word ("ab") toggles, a hit counter, and Enter/Shift+Enter/Esc navigation.
+  It searches the full transcript **including text inside closed collapsible blocks**. A
+  plain `KeyDown` handler won't fire while the native webview holds OS keyboard focus (the
+  page's own in-page listener handles Ctrl+F then) — so `MainWindow.axaml.cs` installs a
+  **window-level tunneling** handler (`AddHandler(KeyDownEvent, …, RoutingStrategies.Tunnel)`)
+  that catches Ctrl+F while focus is anywhere in the app (e.g. the project tree), focuses the
+  webview and triggers find via `InvokeScript("window.ccvOpenFind …")`.
 - **Linux DMABUF workaround:** on systems without a usable GBM device (VMs, some drivers)
   WebKitGTK fails with "Failed to create GBM buffer" and the webview shows only a gray area.
   `Program.Main` re-execs the process once with `WEBKIT_DISABLE_DMABUF_RENDERER=1` — setting
@@ -116,6 +129,9 @@ ChatConversationViewer/
 
 ### Parsing/output hygiene
 
+- Claude `.jsonl` files are not guaranteed to hold one JSON record per physical line: some
+  Claude Code versions write pretty-printed (multi-line) records back to back. `ConversationParser`
+  handles both layouts.
 - Tool results are stripped of ANSI escape sequences (captured terminal colors).
 - JSON re-serialization uses `UnsafeRelaxedJsonEscaping` — the default encoder would turn
   quotes into `\u0022`.
@@ -133,6 +149,12 @@ bar note instead of breaking the others.
 
 Copilot sessions whose `workspace.json` is missing land under hash-named nodes (folder name
 unrecoverable). Copilot CLI sessions without turns are skipped (they'd be empty).
+
+### Export
+
+Export mirrors exactly what's currently displayed (respects the sidechain filter). When the
+conversation contains nested subagent transcripts (inside `Agent` tool results), an
+`ExportOptionsDialog` asks whether to include those transcripts in the `.md` file.
 
 ### Testing approach: headless screenshots
 
