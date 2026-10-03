@@ -29,11 +29,21 @@ on every run, so no extra step is needed. (The Open Source Maintenance Fee
 itself only applies to organizations with more than $10,000 annual revenue;
 see https://wixtoolset.org/osmf/.)
 
+The steps above are identical on Linux, **but WiX cannot build MSIs on
+Linux**: since WiX v4 it validates `Directory/@Name` values with a hardcoded
+Windows path check (`C:\` prefix) that always fails on non-Windows OSes
+(WIX0389). The build must run on Windows or the repo's GitHub Actions
+workflow (`.github/workflows/build-msi.yml`, `windows-latest` runner).
+
 ## Build
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File wix-installer\build.ps1
 ```
+
+To build without a local Windows machine, run the **Build MSI** workflow
+(manual dispatch from the Actions tab, or push a `v*` tag); it uploads the
+MSI as an artifact.
 
 The script:
 
@@ -53,6 +63,9 @@ The script:
 | `bin/` | Build output (gitignored) |
 
 ## Testing the installer
+
+Building *and* running the MSI require Windows. After the build (local or CI
+artifact):
 
 Double-click the MSI to get the full wizard UI. For scripted tests:
 

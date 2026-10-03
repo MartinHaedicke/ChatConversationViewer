@@ -14,16 +14,18 @@ if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 $outDir = Join-Path $PSScriptRoot 'bin'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $msi = Join-Path $outDir "ChatConversationViewer-$version-x64.msi"
+$publishDir = (Join-Path $repoRoot 'publish/win-x64') + '/'
+$icon = Join-Path $repoRoot 'ChatConversationViewer/Assets/app.ico'
 
 Write-Host "Building MSI..."
-wix build "$PSScriptRoot\Product.wxs" `
+wix build "$PSScriptRoot/Product.wxs" `
   -acceptEula wix7 `
   -ext WixToolset.UI.wixext `
   -b $PSScriptRoot `
   -arch x64 `
   -d Version=$version `
-  -d "PublishDir=$repoRoot\publish\win-x64\" `
-  -d "Icon=$repoRoot\ChatConversationViewer\Assets\app.ico" `
+  -d "PublishDir=$publishDir" `
+  -d "Icon=$icon" `
   -o $msi
 if ($LASTEXITCODE -ne 0) { throw 'wix build failed' }
 
