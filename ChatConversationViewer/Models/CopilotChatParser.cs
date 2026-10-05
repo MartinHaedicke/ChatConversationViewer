@@ -294,8 +294,16 @@ public static class CopilotChatParser
     {
         if (text.Length == 0)
             return;
-        entries.Add(new AssistantTextEntry(text.ToString(), timestamp, IsSidechain: false));
+        var value = text.ToString();
         text.Clear();
+
+        // VS Code wraps textEditGroup/codeblockUri edit views in code fences that arrive
+        // as separate markdown fragments; the viewer doesn't render those parts, so a
+        // lone fence fragment would render as an empty assistant box — drop it
+        if (string.IsNullOrWhiteSpace(value.Replace("`", "")))
+            return;
+
+        entries.Add(new AssistantTextEntry(value, timestamp, IsSidechain: false));
     }
 
     // VS Code embeds symbol/file references as inlineReference parts in the assistant

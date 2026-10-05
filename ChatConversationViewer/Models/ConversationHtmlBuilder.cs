@@ -64,6 +64,10 @@ public static class ConversationHtmlBuilder
                     $"<div class=\"body md thinking-body\">{RenderMarkdown(thinking.Thinking)}</div>");
 
             case ToolUseEntry toolUse:
+                // tools invoked without content (e.g. Copilot's task_complete) would
+                // otherwise render an expanded collapsible around an empty box
+                if (string.IsNullOrWhiteSpace(toolUse.InputJson))
+                    return Collapsible("tool", "\U0001F527 " + WebUtility.HtmlEncode(toolUse.Name), time, sidechain, open: false, "");
                 return Collapsible("tool", "\U0001F527 " + WebUtility.HtmlEncode(toolUse.Name), time, sidechain, open: true,
                     CodeBlock(toolUse.InputJson, toolUse.Language));
 
@@ -120,11 +124,18 @@ public static class ConversationHtmlBuilder
     // DisableHtml() escapes all raw HTML; this pass then re-wraps the known
     // pseudo-tags (which appear as escaped text) in spans the template styles as
     // muted monospace blocks.
+    // Names are matched case-insensitively; child tags of a block (e.g. <status>
+    // inside <task-notification>) need no entry — the outer block's span already
+    // wraps them, and generic words would over-match prose/code samples.
     private static readonly string[] PseudoTags =
     {
+        // Claude Code infrastructure markers
         "system-reminder", "command-message", "command-name", "command-args", "command-contents",
-        "local-command-stdout", "local-command-stderr", "bash-input", "bash-stdout", "bash-stderr",
-        "thinking", "artifact-marker",
+        "local-command-stdout", "local-command-stderr", "local-command-caveat",
+        "bash-input", "bash-stdout", "bash-stderr", "thinking", "artifact-marker",
+        "task-notification", "task-id", "tool-use-id", "output-file",
+        "pasted_content", "user-prompt-submit-hook", "total_tokens", "commentary",
+        "subagent-stop", "extremely-important", "extremely_important",
     };
 
     private static readonly Regex PseudoTagRegex = new(
