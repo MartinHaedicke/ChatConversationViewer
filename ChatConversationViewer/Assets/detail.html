@@ -70,13 +70,11 @@ pre.plain { white-space: pre-wrap; }
 .md code { background: #f6f8fa; border-radius: 4px; padding: 1px 5px; font-size: 90%;
            font-family: Consolas, Menlo, monospace; }
 
-/* Chat transcripts are full of XML-ish pseudo-tags (<system-reminder>, ...). The
-   browser treats them as unknown inline elements, which makes their text content
-   blend into the surrounding paragraph. Show them as distinct muted blocks
-   (replaces the old zero-width-space workaround of the Markdown.Avalonia engine). */
-system-reminder, command-message, command-name, command-args, command-contents,
-local-command-stdout, local-command-stderr, bash-input, bash-stdout, bash-stderr,
-thinking, artifact-marker {
+/* Chat transcripts are full of XML-ish pseudo-tags (<system-reminder>, ...). Raw
+   HTML is escaped by the builder (unclosed tags would nest subsequent entries),
+   so these arrive as escaped text wrapped in .ccv-pseudo spans — show them as
+   distinct muted blocks. */
+.ccv-pseudo {
   display: block;
   opacity: .7;
   font-family: Consolas, Menlo, monospace;

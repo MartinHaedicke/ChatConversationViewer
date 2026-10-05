@@ -215,10 +215,10 @@ public sealed class SessionNode
                session.Updated,
                () => CopilotChatParser.Parse(session.FilePath));
 
-    /// <summary>A Copilot CLI conversation stored in its SQLite session store.</summary>
+    /// <summary>A Copilot CLI conversation: the events.jsonl transcript, or the SQLite session store.</summary>
     public static SessionNode ForCopilotCli(CopilotCliReader.SessionInfo session)
         => new(ConversationSource.CopilotCli,
-               $"session-store.db#{session.Id}",
+               CopilotCliReader.EventLogPath(session.Id) ?? $"session-store.db#{session.Id}",
                session.Id,
                session.Title,
                session.Updated,

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Markdig;
 
@@ -18,6 +19,7 @@ public static class ConversationHtmlBuilder
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
         .UseSoftlineBreakAsHardlineBreak()
+        .DisableHtml()
         .Build();
 
     private static readonly Lazy<string> Template =
@@ -109,7 +111,84 @@ public static class ConversationHtmlBuilder
            </div>
            """;
 
-    private static string RenderMarkdown(string text) => Markdig.Markdown.ToHtml(text ?? "", Pipeline);
+    private static string RenderMarkdown(string text) => WrapPseudoTags(Markdig.Markdown.ToHtml(text ?? "", Pipeline));
+
+    // XML-ish pseudo-tags (<system-reminder>, <command-message>, ...) must stay
+    // visually distinct, but raw HTML from transcript text must never reach the DOM:
+    // unclosed tags (C# generics like <SessionNode>, pasted markup, ...) leak into
+    // the document and the browser nests every subsequent entry inside them.
+    // DisableHtml() escapes all raw HTML; this pass then re-wraps the known
+    // pseudo-tags (which appear as escaped text) in spans the template styles as
+    // muted monospace blocks.
+    private static readonly string[] PseudoTags =
+    {
+        "system-reminder", "command-message", "command-name", "command-args", "command-contents",
+        "local-command-stdout", "local-command-stderr", "bash-input", "bash-stdout", "bash-stderr",
+        "thinking", "artifact-marker",
+    };
+
+    private static readonly Regex PseudoTagRegex = new(
+        @"&lt;(/?)(" + string.Join("|", PseudoTags) + @").*?&gt;",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static string WrapPseudoTags(string html)
+    {
+        if (!html.Contains("&lt;"))
+            return html;
+
+        var sb = new StringBuilder(html.Length + 256);
+        var open = new Stack<string>();
+        var pos = 0;
+
+        foreach (var m in PseudoTagRegex.Matches(html))
+        {
+            var match = (Match)m;
+            sb.Append(html, pos, match.Index - pos);
+            pos = match.Index + match.Length;
+
+            if (match.Groups[1].Length == 0)
+            {
+                sb.Append("<span class=\"ccv-pseudo\">");
+                sb.Append(match.Value);
+                open.Push(match.Groups[2].Value);
+            }
+            else
+            {
+                // close inner unclosed spans first, then the matching one; a close
+                // without a matching open is left as plain text
+                var name = match.Groups[2].Value;
+                var index = IndexOfOpen(open, name);
+                if (index < 0)
+                {
+                    sb.Append(match.Value);
+                    continue;
+                }
+                sb.Append(match.Value);
+                for (var i = 0; i <= index; i++)
+                    sb.Append("</span>");
+                for (var i = 0; i <= index; i++)
+                    open.Pop();
+            }
+        }
+
+        sb.Append(html, pos, html.Length - pos);
+        while (open.Count > 0)
+        {
+            open.Pop();
+            sb.Append("</span>");
+        }
+
+        return sb.ToString();
+    }
+
+    private static int IndexOfOpen(Stack<string> stack, string name)
+    {
+        var items = stack.ToArray(); // top-first
+        for (var i = 0; i < items.Length; i++)
+            if (string.Equals(items[i], name, StringComparison.Ordinal))
+                return i;
+        return -1;
+    }
 
     private static string CodeBlock(string content, string language)
     {

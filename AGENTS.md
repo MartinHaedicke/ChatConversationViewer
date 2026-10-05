@@ -10,7 +10,7 @@ AI assistant conversations from four different tools in one tree view:
 | Claude Code | `~/.claude/projects/<slug>/*.jsonl` | `ConversationParser` |
 | OpenCode | `~/.local/share/opencode/opencode.db` (SQLite) | `OpenCodeReader` |
 | GitHub Copilot (VS Code Chat) | `%APPDATA%/<Code variant>/User/workspaceStorage/<hash>/chatSessions/*.json` | `CopilotChatParser` |
-| Copilot CLI | `~/.copilot/session-store.db` (SQLite) | `CopilotCliReader` |
+| Copilot CLI | `~/.copilot/session-state/<id>/events.jsonl` + `~/.copilot/session-store.db` (SQLite) | `CopilotCliReader` |
 
 Features: tree of projects/conversations with per-source color marks (merged per working
 directory), title search over all conversations, detail view with markdown rendering,
@@ -44,7 +44,7 @@ ChatConversationViewer/
 │   ├── ConversationParser.cs     # Claude JSONL parser (+ DetectLanguage, ANSI stripping)
 │   ├── OpenCodeReader.cs         # OpenCode SQLite reader (session/message/part tables)
 │   ├── CopilotChatParser.cs      # VS Code chatSessions JSON parser (+ workspace.json folder mapping)
-│   ├── CopilotCliReader.cs       # Copilot CLI SQLite reader (sessions/turns tables)
+│   ├── CopilotCliReader.cs       # Copilot CLI reader (events.jsonl transcripts + SQLite session index)
 │   ├── ConversationHtmlBuilder.cs # entries -> standalone HTML doc for the webview detail view
 │   └── ConversationExporter.cs   # entries -> Markdown export
 ├── ViewModels/
@@ -80,10 +80,13 @@ ChatConversationViewer/
   matters: `{{ENTRIES}}` is replaced **last**, because message text can legitimately contain
   `{{...}}` sequences that must not be interpreted as placeholders.
 - Markdown pipeline: Markdig with `UseSoftlineBreakAsHardlineBreak` (chat text expects
-  visible single-newline breaks) and `UseAdvancedExtensions` (tables etc.).
-- Raw XML-ish pseudo-tags in transcripts (`<system-reminder>`, `<command-message>`, ...)
-  pass through Markdig verbatim; the template CSS makes those unknown elements visible as
-  muted monospace blocks (browsers would otherwise inline their text into the paragraph).
+  visible single-newline breaks), `UseAdvancedExtensions` (tables etc.) and `DisableHtml`
+  (raw HTML in chat text must never reach the DOM — unclosed tags like C# generics
+  `<SessionNode>` made the browser nest every subsequent entry inside them).
+- XML-ish pseudo-tags in transcripts (`<system-reminder>`, `<command-message>`, ...) arrive
+  as escaped text re-wrapped into `.ccv-pseudo` spans by `ConversationHtmlBuilder.WrapPseudoTags`
+  (open/close pairing with a stack, unclosed tags auto-closed at entry end); the template CSS
+  shows those spans as muted monospace blocks.
 - Code highlighting runs client-side: `highlight.min.js` + `github.min.css` are **inlined**
   into every document (NavigateToString has no base URL, so external resources don't load) and
   `hljs.highlightAll()` runs on parse. Tool calls/results with language `text` render as
@@ -137,8 +140,8 @@ ChatConversationViewer/
   quotes into `\u0022`.
 - `DetectLanguage` (JSON = parse-validated, XML = `<...>` heuristic) decides whether tool
   results render as highlighted code blocks or raw monospace text.
-- `ToolUseEntry.Language` is `json` for Claude/OpenCode, `text` for Copilot (VS Code only
-  stores human-readable invocation messages, no raw tool inputs/outputs).
+- `ToolUseEntry.Language` is `json` for Claude/OpenCode/Copilot CLI, `text` for Copilot VS Code
+  Chat (only stores human-readable invocation messages, no raw tool inputs/outputs).
 
 ### Source merging
 
@@ -148,7 +151,9 @@ reading while the tools are running). Each source load failure degrades graceful
 bar note instead of breaking the others.
 
 Copilot sessions whose `workspace.json` is missing land under hash-named nodes (folder name
-unrecoverable). Copilot CLI sessions without turns are skipped (they'd be empty).
+unrecoverable). Copilot CLI sessions without db turns are skipped (they'd be empty); their
+detail view parses the full events.jsonl transcript when present and falls back to the db's
+lossy user/assistant turns otherwise.
 
 ### Export
 

@@ -3,16 +3,19 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ChatConversationViewer.Models;
 
 /// <summary>
 /// Reads VS Code Copilot Chat sessions from
-/// %APPDATA%\&lt;Code variant&gt;\User\workspaceStorage\&lt;workspace-hash&gt;\chatSessions\*.json.
+/// %APPDATA%\&lt;Code variant&gt;\User\workspaceStorage\&lt;workspace-hash&gt;\chatSessions\*.json[l].
 /// The workspace hash is mapped back to its folder via the workspace.json next to it.
 ///
 /// Note: the format is internal to VS Code (currently v3) and may change between releases.
-/// Tool calls only carry human-readable invocation messages — no raw inputs/outputs.
+/// Newer VS Code writes *.jsonl record logs instead of a single JSON document (see
+/// LoadSessionDocument). Tool calls only carry human-readable invocation messages —
+/// no raw inputs/outputs.
 /// </summary>
 public static class CopilotChatParser
 {
@@ -31,8 +34,17 @@ public static class CopilotChatParser
 
             var directory = ReadWorkspaceFolder(workspaceDir) ?? Path.GetFileName(workspaceDir);
 
-            foreach (var file in Directory.EnumerateFiles(chatDir, "*.json"))
+            foreach (var file in Directory.EnumerateFiles(chatDir, "*.json*"))
             {
+                // when a migrated session has both its legacy .json and the newer
+                // .jsonl operation log, the log is the source of truth (VS Code reads
+                // it preferentially and never deletes the old file)
+                if (file.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                    && File.Exists(Path.ChangeExtension(file, ".jsonl")))
+                {
+                    continue;
+                }
+
                 try
                 {
                     var info = ReadSessionInfo(file, directory);
@@ -53,7 +65,7 @@ public static class CopilotChatParser
     {
         var entries = new List<ConversationEntry>();
 
-        using var doc = JsonDocument.Parse(File.ReadAllText(filePath));
+        using var doc = LoadSessionDocument(filePath);
         if (!doc.RootElement.TryGetProperty("requests", out var requests) || requests.ValueKind != JsonValueKind.Array)
             return entries;
 
@@ -86,6 +98,13 @@ public static class CopilotChatParser
                             assistantText.Append(markdown);
                         break;
 
+                    // vulnerable-markdown parts keep their kind and wrap the text in
+                    // a content object — the text is still plain visible markdown
+                    case "markdownVuln" when part.TryGetProperty("content", out var vulnContent):
+                        if (GetString(vulnContent, "value") is { Length: > 0 } vulnText)
+                            assistantText.Append(vulnText);
+                        break;
+
                     case "inlineReference":
                         assistantText.Append(InlineReferenceMarkdown(part));
                         break;
@@ -94,6 +113,22 @@ public static class CopilotChatParser
                         FlushAssistant(entries, assistantText, timestamp);
                         if (GetString(part, "value") is { Length: > 0 } thinking)
                             entries.Add(new ThinkingEntry(thinking, timestamp, IsSidechain: false));
+                        else if (part.TryGetProperty("value", out var thinkingValue)
+                                 && thinkingValue.ValueKind == JsonValueKind.Array)
+                        {
+                            var joined = new StringBuilder();
+                            foreach (var item in thinkingValue.EnumerateArray())
+                            {
+                                if (item.ValueKind == JsonValueKind.String)
+                                    joined.Append(item.GetString());
+                                joined.Append('\n');
+                            }
+
+                            var joinedThinking = joined.ToString().TrimEnd('\n');
+                            if (joinedThinking.Length > 0)
+                                entries.Add(new ThinkingEntry(joinedThinking, timestamp, IsSidechain: false));
+                        }
+
                         break;
 
                     case "toolInvocationSerialized":
@@ -124,6 +159,135 @@ public static class CopilotChatParser
         }
 
         return entries;
+    }
+
+    /// <summary>
+    /// Loads a chat session file as a single JSON document. Older VS Code writes one
+    /// document per *.json file; newer VS Code writes *.jsonl operation logs — the
+    /// first record (kind 0) is a full session snapshot and later records patch it:
+    /// kind 1 (Set) replaces the value v at the path k, kind 2 (Push) appends the
+    /// items of v to the array at path k after truncating it to length i (when i is
+    /// present; v may be absent for a pure truncation), kind 3 (Delete) removes the
+    /// value at path k. Replaying the records reconstructs the session document.
+    /// </summary>
+    private static JsonDocument LoadSessionDocument(string filePath)
+    {
+        var text = File.ReadAllText(filePath);
+        try
+        {
+            return JsonDocument.Parse(text);
+        }
+        catch (JsonException)
+        {
+            // operation-log format
+        }
+
+        JsonNode? root = null;
+        foreach (var line in text.Split('\n'))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            JsonNode? record;
+            try
+            {
+                record = JsonNode.Parse(line);
+            }
+            catch (JsonException)
+            {
+                continue; // tolerate a torn line from a session still being written
+            }
+
+            if (record is not JsonObject recordObject)
+                continue;
+
+            var kind = recordObject["kind"]?.GetValue<int>();
+            var path = recordObject["k"] as JsonArray;
+            var value = recordObject["v"];
+
+            if (kind == 0)
+            {
+                root = value?.DeepClone();
+                continue;
+            }
+
+            if (root is null || path is null || kind is not (1 or 2 or 3))
+                continue;
+
+            var segments = new List<object>();
+            foreach (var segment in path)
+            {
+                if (segment is JsonValue indexValue && indexValue.TryGetValue<int>(out var index))
+                    segments.Add(index);
+                else if (segment is JsonValue nameValue && nameValue.TryGetValue<string>(out var name))
+                    segments.Add(name);
+            }
+
+            if (segments.Count == 0)
+                continue;
+
+            if (kind == 2)
+            {
+                if (Navigate(root, segments) is JsonArray target)
+                {
+                    // Push is splice-or-append: i truncates the array before the new items
+                    if (recordObject["i"] is JsonValue keepValue && keepValue.TryGetValue<int>(out var keepAt))
+                        while (target.Count > keepAt)
+                            target.RemoveAt(target.Count - 1);
+
+                    if (value is JsonArray items)
+                    {
+                        foreach (var item in items)
+                        {
+                            if (item is not null)
+                                target.Add(item.DeepClone());
+                        }
+                    }
+                }
+
+                continue;
+            }
+
+            // kind 1 (Set) and kind 3 (Delete) address the value through its parent
+            var parent = Navigate(root, segments.GetRange(0, segments.Count - 1));
+            switch (segments[^1])
+            {
+                case string name when parent is JsonObject objectParent:
+                    if (kind == 3)
+                        objectParent.Remove(name);
+                    else
+                        objectParent[name] = value?.DeepClone();
+                    break;
+                case int setIndex when parent is JsonArray arrayParent
+                    && setIndex >= 0 && setIndex < arrayParent.Count:
+                    if (kind == 3)
+                        arrayParent.RemoveAt(setIndex);
+                    else
+                        arrayParent[setIndex] = value?.DeepClone();
+                    break;
+            }
+        }
+
+        return JsonDocument.Parse(root?.ToJsonString() ?? "{}");
+    }
+
+    private static JsonNode? Navigate(JsonNode node, IReadOnlyList<object> segments)
+    {
+        foreach (var segment in segments)
+        {
+            JsonNode? next = segment switch
+            {
+                string name when node is JsonObject objectNode
+                    && objectNode.TryGetPropertyValue(name, out var property) => property,
+                int index when node is JsonArray arrayNode
+                    && index >= 0 && index < arrayNode.Count => arrayNode[index],
+                _ => null,
+            };
+            if (next is null)
+                return null;
+            node = next;
+        }
+        return node;
     }
 
     private static void FlushAssistant(List<ConversationEntry> entries, StringBuilder text, DateTime? timestamp)
@@ -203,7 +367,7 @@ public static class CopilotChatParser
 
     private static SessionInfo? ReadSessionInfo(string filePath, string directory)
     {
-        using var doc = JsonDocument.Parse(File.ReadAllText(filePath));
+        using var doc = LoadSessionDocument(filePath);
         var root = doc.RootElement;
 
         // skip sessions without any actual conversation
@@ -299,9 +463,16 @@ public static class CopilotChatParser
         var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         foreach (var variant in new[] { "Code", "Code - Insiders", "VSCodium", "Cursor" })
         {
-            var path = Path.Combine(roaming, variant, "User", "workspaceStorage");
-            if (Directory.Exists(path))
-                yield return path;
+            var userRoot = Path.Combine(roaming, variant, "User");
+            var workspaceStorage = Path.Combine(userRoot, "workspaceStorage");
+            if (Directory.Exists(workspaceStorage))
+                yield return workspaceStorage;
+
+            // sessions from an empty window live outside workspaceStorage and have no
+            // workspace.json folder mapping
+            var emptyWindow = Path.Combine(userRoot, "globalStorage", "emptyWindowChatSessions");
+            if (Directory.Exists(emptyWindow))
+                yield return emptyWindow;
         }
     }
 
